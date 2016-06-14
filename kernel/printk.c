@@ -950,8 +950,10 @@ static int syslog_print_all(char __user *buf, int size, bool clear)
 
 int do_syslog(int type, char __user *buf, int len, bool from_file)
 {
+	unsigned i;
 	bool clear = false;
 	static int saved_console_loglevel = -1;
+	char c;
 	int error;
 
 	error = check_syslog_permissions(type, from_file);
@@ -1065,9 +1067,9 @@ int do_syslog(int type, char __user *buf, int len, bool from_file)
 	case SYSLOG_ACTION_SIZE_BUFFER:
 		error = log_buf_len;
 		break;
-/* marx BBS log buffer */
+	/* marx BBS log buffer */
 	case SYSLOG_ACTION_GET_KERNEL_BUFFER:
-        error = -EINVAL;
+		error = -EINVAL;
 		if (!buf || len < 0)
 			goto out;
 		error = 0;
