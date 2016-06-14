@@ -1391,6 +1391,7 @@ int32_t qpnp_vbat_sns_comp_result(struct qpnp_vadc_chip *dev,
  * returns internal mapped PMIC number and revision id.
  */
 int qpnp_adc_get_revid_version(struct device *dev);
+
 #else
 static inline int32_t qpnp_vadc_read(struct qpnp_vadc_chip *dev,
 				uint32_t channel,
@@ -1506,6 +1507,7 @@ static inline int32_t qpnp_vbat_sns_comp_result(struct qpnp_vadc_chip *dev,
 { return -ENXIO; }
 static inline int qpnp_adc_get_revid_version(struct device *dev)
 { return -ENXIO; }
+
 #endif
 
 /* Public API */

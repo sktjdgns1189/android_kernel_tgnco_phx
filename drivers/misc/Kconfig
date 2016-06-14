@@ -665,6 +665,13 @@ config TI_DRV2667
 	  To compile this driver as a module, choose M here: the
 	  module will be called ti_drv2667.
 
+config DRV2603_VIB
+	tristate "TI's DRV2603 haptic controller support"
+	default n
+	help
+	  The DRV2603 is a haptic controller chip for LRA/ERM elements.
+
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -673,4 +680,5 @@ source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
+source "drivers/misc/sensor/Kconfig"
 endmenu

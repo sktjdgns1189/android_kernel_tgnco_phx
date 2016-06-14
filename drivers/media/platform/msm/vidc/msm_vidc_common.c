@@ -867,7 +867,8 @@ struct sys_err_handler_data {
 	struct delayed_work work;
 };
 
-
+/* FIH, Case 02017411 patch { */
+#if (0)
 void hw_sys_error_handler(struct work_struct *work)
 {
 	struct msm_vidc_core *core = NULL;
@@ -909,12 +910,18 @@ exit:
 	/* free sys error handler, allocated in handle_sys_err */
 	kfree(handler);
 }
+#endif
+/* FIH, Case 02017411 patch } */
 
 static void handle_sys_error(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_core *core = NULL;
+/* FIH, Case 02017411 patch { */
+#if (0)
 	struct sys_err_handler_data *handler = NULL;
+#endif
+/* FIH, Case 02017411 patch } */
 	struct hfi_device *hdev = NULL;
 	struct msm_vidc_inst *inst = NULL;
 	int rc = 0;
@@ -962,8 +969,10 @@ static void handle_sys_error(enum command_response cmd, void *data)
 		msm_vidc_queue_v4l2_event(inst,
 				V4L2_EVENT_MSM_VIDC_SYS_ERROR);
 	}
-	mutex_unlock(&core->lock);
 
+/* FIH, Case 02017411 patch { */
+#if (0)
+	mutex_unlock(&core->lock);
 
 	handler = kzalloc(sizeof(*handler), GFP_KERNEL);
 	if (!handler) {
@@ -982,6 +991,27 @@ static void handle_sys_error(enum command_response cmd, void *data)
 	* error.
 	*/
 	schedule_delayed_work(&handler->work, msecs_to_jiffies(5000));
+#else
+	if (core->state == VIDC_CORE_INVALID) {
+		dprintk(VIDC_DBG, "Calling core_release\n");
+		rc = call_hfi_op(hdev, core_release, hdev->hfi_device_data);
+		if (rc) {
+			dprintk(VIDC_ERR, "core_release failed\n");
+			mutex_unlock(&core->lock);
+			return;
+		}
+	}
+
+	core->state = VIDC_CORE_UNINIT;
+	call_hfi_op(hdev, unload_fw, hdev->hfi_device_data);
+	dprintk(VIDC_DBG, "Firmware unloaded\n");
+	if (core->resources.ocmem_size)
+		msm_comm_unvote_buses(core, DDR_MEM|OCMEM_MEM);
+	else
+		msm_comm_unvote_buses(core, DDR_MEM);
+	mutex_unlock(&core->lock);
+#endif
+/* FIH, Case 02017411 patch } */
 }
 
 static void handle_session_close(enum command_response cmd, void *data)
@@ -2531,6 +2561,7 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 	}
 
 	if (inst->state == MSM_VIDC_CORE_INVALID ||
+		core->state == VIDC_CORE_UNINIT ||  /* FIH, Case 02017411 patch */
 		core->state == VIDC_CORE_INVALID) {
 		dprintk(VIDC_ERR, "Core is in bad state. Can't Queue\n");
 		return -EINVAL;
@@ -3172,6 +3203,7 @@ int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)
 	msm_comm_flush_dynamic_buffers(inst);
 	mutex_unlock(&inst->sync_lock);
 	if (inst->state == MSM_VIDC_CORE_INVALID ||
+			core->state == VIDC_CORE_UNINIT ||  /* FIH, Case 02017411 patch */
 			core->state == VIDC_CORE_INVALID) {
 		dprintk(VIDC_ERR,
 				"Core %p and inst %p are in bad state\n",
@@ -3618,8 +3650,18 @@ void msm_comm_smem_free(struct msm_vidc_inst *inst, struct msm_smem *mem)
 			"%s: invalid params: %p %p\n", __func__, inst, mem);
 		return;
 	}
+
+/* FIH, Case 02017411 patch { */
+#if (0)
 	if (power_on_for_smem(inst))
 		return;
+#else
+	if (inst->state != MSM_VIDC_CORE_INVALID) {
+		if (power_on_for_smem(inst))
+			return;
+	}
+#endif
+/* FIH, Case 02017411 patch } */
 
 	return msm_smem_free(inst->mem_client, mem);
 }
@@ -3642,8 +3684,18 @@ struct msm_smem *msm_comm_smem_user_to_kernel(struct msm_vidc_inst *inst,
 		dprintk(VIDC_ERR, "%s: invalid inst: %p\n", __func__, inst);
 		return NULL;
 	}
+
+/* FIH, Case 02017411 patch { */
+#if (0)
 	if (power_on_for_smem(inst))
 		return NULL;
+#else
+	if (inst->state != MSM_VIDC_CORE_INVALID) {
+		if (power_on_for_smem(inst))
+			return NULL;
+	}
+#endif
+/* FIH, Case 02017411 patch } */
 
 	return msm_smem_user_to_kernel(inst->mem_client,
 			fd, offset, buffer_type);

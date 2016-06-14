@@ -2978,6 +2978,7 @@ static struct rcg_clk jpeg2_clk_src = {
 };
 
 static struct clk_freq_tbl ftbl_camss_mclk0_3_clk[] = {
+	F_MM(12000000,  gpll0,  10,   1,   5), //For iCATCH7002A ISP
 	F_MM(19200000,    cxo,   1,   0,   0),
 	F_MM(66670000,  gpll0,   9,   0,   0),
 	F_END
@@ -2988,6 +2989,7 @@ static struct clk_freq_tbl ftbl_camss_mclk0_3_pro_clk[] = {
 	F_MM( 6000000,  gpll0,   10,   1,  10),
 	F_MM( 8000000,  gpll0,   15,   1,   5),
 	F_MM( 9600000,    cxo,    2,   0,   0),
+	F_MM(12000000,  gpll0,   10,   1,   5), //For iCATCH7002A ISP
 	F_MM(16000000,  gpll0, 12.5,   1,   3),
 	F_MM(19200000,    cxo,    1,   0,   0),
 	F_MM(24000000,  gpll0,    5,   1,   5),
@@ -4879,6 +4881,17 @@ static struct clk_lookup msm_clocks_8974pro_only[] __initdata = {
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "0.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk1_clk.c, "1.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk2_clk.c, "2.qcom,camera"),
+	/*For iCATCH7002A ISP*/
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "78.qcom,isp_imx135"),
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "78.qcom,isp_ov5648"),
+//derek
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "78.qcom,isp_main_cam"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "78.qcom,isp_main_cam"),
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "78.qcom,isp_front_cam"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "78.qcom,isp_front_cam"),
+//derek
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "78.qcom,isp_imx135"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "78.qcom,isp_ov5648"),
 };
 
 static struct clk_lookup msm_clocks_8974_only[] __initdata = {
@@ -4914,10 +4927,12 @@ static struct clk_lookup msm_clocks_8974_common[] __initdata = {
 	CLK_LOOKUP("dma_bam_pclk", gcc_bam_dma_ahb_clk.c, "msm_sps"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f991f000.serial"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9924000.i2c"),
+	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9925000.i2c"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f991e000.serial"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup1_i2c_apps_clk.c, "f9923000.i2c"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9923000.i2c"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup2_i2c_apps_clk.c, "f9924000.i2c"),
+	CLK_LOOKUP("core_clk", gcc_blsp1_qup3_i2c_apps_clk.c, "f9925000.i2c"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup2_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup1_spi_apps_clk.c, "f9923000.spi"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9923000.spi"),
@@ -4944,11 +4959,13 @@ static struct clk_lookup msm_clocks_8974_common[] __initdata = {
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9966000.spi"),
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f995e000.serial"),
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f995d000.uart"),
+	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9964000.i2c"),
+	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9965000.i2c"),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup1_i2c_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup1_spi_apps_clk.c, ""),
-	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_i2c_apps_clk.c, ""),
+	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_i2c_apps_clk.c, "f9964000.i2c"),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_spi_apps_clk.c, ""),
-	CLK_LOOKUP("core_clk", gcc_blsp2_qup3_i2c_apps_clk.c, ""),
+	CLK_LOOKUP("core_clk", gcc_blsp2_qup3_i2c_apps_clk.c, "f9965000.i2c"),	
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup3_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup4_i2c_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup5_i2c_apps_clk.c, "f9967000.i2c"),
@@ -5050,6 +5067,9 @@ static struct clk_lookup msm_clocks_8974_common[] __initdata = {
 	CLK_LOOKUP("core_clk", gcc_usb_hs_system_clk.c,   "msm_ehci_host"),
 	CLK_LOOKUP("sleep_clk", gcc_usb2b_phy_sleep_clk.c, "msm_ehci_host"),
 	CLK_LOOKUP("pwm_clk", div_clk2.c, "0-0048"),
+	CLK_LOOKUP("pwm_clk", div_clk2.c, "ti,drv2603.73"),
+	CLK_LOOKUP("pwm_clk", div_clk2.c, "ti,drv2603.74"),
+	CLK_LOOKUP("pwm_clk", div_clk2.c, "ti,drv2603.76"),
 
 	CLK_LOOKUP("measure",   measure_clk.c, "fb000000.qcom,wcnss-wlan"),
 	CLK_LOOKUP("wcnss_debug", wcnss_m_clk, "fb000000.qcom,wcnss-wlan"),

@@ -38,7 +38,16 @@ struct task_security_struct {
 
 struct inode_security_struct {
 	struct inode *inode;	/* back pointer to inode object */
+/* Case 01597411: SELinux: Fix possible NULL pointer dereference in selinux_inode_permission() ++ */
+#if (0)
 	struct list_head list;	/* list of inode_security_struct */
+#else
+	union {
+		struct list_head list;	/* list of inode_security_struct */
+		struct rcu_head rcu;	/* for freeing the inode_security_struct */
+	};
+#endif
+/* Case 01597411: SELinux: Fix possible NULL pointer dereference in selinux_inode_permission() -- */
 	u32 task_sid;		/* SID of creating task */
 	u32 sid;		/* SID of this object */
 	u16 sclass;		/* security class of this object */

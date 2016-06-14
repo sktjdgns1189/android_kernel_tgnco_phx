@@ -461,3 +461,6 @@ config SND_SOC_MSM_HDMI_CODEC_RX
 	help
 	HDMI audio drivers should be built only if the platform
         supports hdmi panel.
+
+config SND_SOC_FIH_HEADSET
+	bool "FIH headset and button detection"

@@ -38,6 +38,10 @@
 #include <net/netlink.h>
 #include <net/genetlink.h>
 
+/* Black Box */
+#define BBOX_PMIC_DIE_TEMP do {printk("BBox;%s: PMIC Die temp reached\n", __func__); printk("BBox::UEC;17::3\n");} while (0);
+#define BBOX_THERMAL_HWMON_FAIL do {printk("BBox;%s: Add hwmon failed\n", __func__); printk("BBox::UEC;22::5\n");} while (0);
+
 MODULE_AUTHOR("Zhang Rui");
 MODULE_DESCRIPTION("Generic thermal management sysfs support");
 MODULE_LICENSE("GPL");
@@ -1486,6 +1490,7 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 					ret = tz->ops->notify(tz, count,
 							      trip_type);
 				if (!ret) {
+					BBOX_PMIC_DIE_TEMP;
 					pr_emerg("Critical temperature reached (%ld C), shutting down\n",
 						 temp/1000);
 					orderly_poweroff(true);
@@ -1513,6 +1518,7 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 					ret = tz->ops->notify(tz, count,
 								trip_type);
 			if (!ret) {
+					BBOX_PMIC_DIE_TEMP;
 				printk(KERN_EMERG
 				"Critical temperature reached (%ld C), \
 					shutting down.\n", temp/1000);
@@ -1668,8 +1674,10 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 		goto unregister;
 
 	result = thermal_add_hwmon_sysfs(tz);
-	if (result)
+	if (result) {
+		BBOX_THERMAL_HWMON_FAIL;
 		goto unregister;
+	}
 
 	mutex_lock(&thermal_list_lock);
 	list_add_tail(&tz->node, &thermal_tz_list);

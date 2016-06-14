@@ -17,6 +17,7 @@
 #include "mdss_panel.h"
 #include "mdss_debug.h"
 #include "mdss_mdp_trace.h"
+#include "mdss_dsi.h"
 
 #define VSYNC_EXPIRE_TICK 4
 
@@ -46,13 +47,6 @@ struct mdss_mdp_cmd_ctx {
 	struct delayed_work ulps_work;
 	struct work_struct pp_done_work;
 	atomic_t pp_done_cnt;
-
-	/* te config */
-	u8 tear_check;
-	u16 height;	/* panel height */
-	u16 vporch;	/* vertical porches */
-	u16 start_threshold;
-	u32 vclk_line;	/* vsync clock per line */
 	struct mdss_panel_recovery recovery;
 	bool ulps;
 	struct mdss_mdp_cmd_ctx *sync_ctx; /* for partial update */
@@ -504,13 +498,43 @@ int mdss_mdp_cmd_reconfigure_splash_done(struct mdss_mdp_ctl *ctl, bool handoff)
 	return ret;
 }
 
+static void mdp_print_reg(int len)
+{
+	char *addr;
+	u32 x0,x4,x8,xc;
+	int i;
+	pr_err("%s: =============MDP Reg DUMP==============\n", __func__);
+	addr = 0;
+	if (len % 16)
+		len += 16;
+	len /= 16;
+	for (i=0; i < len; i++) {
+		x0 = MDSS_MDP_REG_READ(addr+0x0);
+		x4 = MDSS_MDP_REG_READ(addr+0x4);
+		x8 = MDSS_MDP_REG_READ(addr+0x8);
+		xc = MDSS_MDP_REG_READ(addr+0xc);
+		pr_err("%p : %08x %08x %08x %08x\n",addr, x0,x4,x8,xc);
+		addr += 16;
+	}
+}
+
+void mdp_dump_reg(void)
+{
+	mdp_print_reg(19776);
+}
+
 static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 {
 	struct mdss_mdp_cmd_ctx *ctx;
 	struct mdss_panel_data *pdata;
 	unsigned long flags;
 	int rc = 0;
-
+#ifdef CONFIG_MIPI_DSI_MDSS_REG_DUMP
+	/* [Qualcomm case #01470448] add for Qualcomm debug wait4pingpong make unknown reset issue */
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	pdata = ctl->panel_data;
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata, panel_data);
+#endif
 	ctx = (struct mdss_mdp_cmd_ctx *) ctl->priv_data;
 	if (!ctx) {
 		pr_err("invalid ctx\n");

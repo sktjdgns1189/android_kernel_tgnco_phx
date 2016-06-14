@@ -23,4 +23,17 @@ config USB_DWC3_VERBOSE
 	help
 	  Say Y here to enable verbose debugging messages on DWC3 Driver.
 
+config FIH_PROTECT_DWC3_CTRL_FUNC
+	bool "Enable Protect DWC3_CTRL_FUNC"
+	default y
+	help
+	  Say Y here to enable Protect DWC3_CTRL_FUNC.
+	  When use Proprietary Charger that is two USB port and there D+
+	  or D- connect each other.
+	  The device has opportunity fail when charging connect two devices
+	  because the device 1 can interfere device 2 through D+ or D-.
+	  The device miss detect to SDP(USB port), In fact that should detect CDP(Charging port).
+	  The device start fast reset and check link status until connect down or
+	  unknown reset in dwc3_gadget_interrupt.
+
 endif

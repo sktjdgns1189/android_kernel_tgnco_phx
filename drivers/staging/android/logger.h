@@ -55,6 +55,9 @@ struct logger_entry {
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
+//add@20130110 for adding a new log buffer begin 
+#define LOGGER_LOG_FIH		"fih"	/* fih specific debug onfo */
+//add@20130110 for adding a new log buffer end 
 
 #define LOGGER_ENTRY_MAX_PAYLOAD	4076
 

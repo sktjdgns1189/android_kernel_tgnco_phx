@@ -25,7 +25,11 @@
 
 #include <asm/mach/time.h>
 
+#ifdef CONFIG_POWER_OFF_ALARM
+#define ALARM_DELTA 30
+#else
 #define ALARM_DELTA 120
+#endif
 #define ANDROID_ALARM_PRINT_ERROR (1U << 0)
 #define ANDROID_ALARM_PRINT_INIT_STATUS (1U << 1)
 #define ANDROID_ALARM_PRINT_TSET (1U << 2)
@@ -527,6 +531,9 @@ static int alarm_resume(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_POWER_OFF_ALARM
+extern void set_poff_sec(long secs);
+#endif
 static int set_alarm_time_to_rtc(const long power_on_time)
 {
 	struct timespec wall_time;
@@ -544,6 +551,9 @@ static int set_alarm_time_to_rtc(const long power_on_time)
 	rtc_tm_to_time(&rtc_time, &rtc_secs);
 	alarm_delta = wall_time.tv_sec - rtc_secs;
 	alarm_time = power_on_time - alarm_delta;
+#ifdef CONFIG_POWER_OFF_ALARM
+	set_poff_sec(alarm_time);
+#endif
 
 	/*
 	 * Substract ALARM_DELTA from actual alarm time
@@ -571,6 +581,9 @@ static int set_alarm_time_to_rtc(const long power_on_time)
 
 disable_alarm:
 	rtc_alarm_irq_enable(alarm_rtc_dev, 0);
+#ifdef CONFIG_POWER_OFF_ALARM
+	set_poff_sec(0);
+#endif
 	return rc;
 }
 

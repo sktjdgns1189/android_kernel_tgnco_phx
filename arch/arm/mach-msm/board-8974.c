@@ -48,7 +48,7 @@
 #include "pm.h"
 #include "modem_notifier.h"
 #include "platsmp.h"
-
+#include <fih/hwid.h>
 
 static struct memtype_reserve msm8974_reserve_table[] __initdata = {
 	[MEMTYPE_SMI] = {
@@ -168,7 +168,16 @@ void __init msm8974_init(void)
 	if (socinfo_init() < 0)
 		pr_err("%s: socinfo_init() failed\n", __func__);
 
-	msm_8974_init_gpiomux();
+	/* FIH, initial hwid mechanism */
+	fih_hwid_setup();
+
+	msm_8974_phx_init_gpiomux();
+
+	#ifdef CONFIG_FIH_DEBUG
+	ram_console_init();
+	last_alog_init();
+	#endif
+
 	regulator_has_full_constraints();
 	board_dt_populate(adata);
 	msm8974_add_drivers();

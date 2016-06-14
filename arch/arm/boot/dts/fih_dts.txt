@@ -1,0 +1,13 @@
+msm8974_phx_evt_ac.dts
+msm8974_phx_evt2_ac.dts
+msm8974_phx_evt3_ac.dts
+msm8974_phx_evt4_ac.dts
+msm8974_phx_evt5_ac.dts
+msm8974_phx_evt6_ac.dts
+msm8974_phx_dvt_ac.dts
+msm8974_phx_dvt2_ac.dts
+msm8974_phx_dvt3_ac.dts
+msm8974_phx_dvt4_ac.dts
+msm8974_phx_dvt5_ac.dts
+msm8974_phx_pvt_ac.dts
+msm8974_phx_mp_ac.dts

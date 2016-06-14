@@ -258,8 +258,10 @@ static int wcd9xxx_slim_read_device(struct wcd9xxx *wcd9xxx, unsigned short reg,
 		usleep_range(5000, 5000);
 	}
 
-	if (ret)
+	if (ret) {
+		printk("BBox::UEC; 2::1\n");
 		pr_err("%s: Error, Codec read failed (%d)\n", __func__, ret);
+	}
 
 	return ret;
 }
@@ -287,8 +289,10 @@ static int wcd9xxx_slim_write_device(struct wcd9xxx *wcd9xxx,
 		usleep_range(5000, 5000);
 	}
 
-	if (ret)
+	if (ret) {
+		printk("BBox::UEC; 2::1\n");
 		pr_err("%s: Error, Codec write failed (%d)\n", __func__, ret);
+	}
 
 	return ret;
 }

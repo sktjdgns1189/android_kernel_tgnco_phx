@@ -159,6 +159,8 @@ static struct dbs_tuners {
 	.input_boost = 0,
 };
 
+extern struct _cpufreq_subsys_opt *cpufreq_subsys_opt;  //20141223 VNAL-537 IsonYHHung start
+
 static inline u64 get_cpu_idle_time_jiffy(unsigned int cpu, u64 *wall)
 {
 	u64 idle_time;
@@ -836,6 +838,14 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			continue;
 
 		cur_load = 100 * (wall_time - idle_time) / wall_time;
+
+//20141223 VNAL-537 IsonYHHung start
+		if(cpufreq_subsys_opt){
+			if (cpufreq_subsys_opt->cpuload(policy, cur_load))
+			return;
+		}
+//20141223 VNAL-537 IsonYHHung end
+
 		j_dbs_info->max_load  = max(cur_load, j_dbs_info->prev_load);
 		j_dbs_info->prev_load = cur_load;
 		freq_avg = __cpufreq_driver_getavg(policy, j);
@@ -845,6 +855,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		load_freq = cur_load * freq_avg;
 		if (load_freq > max_load_freq)
 			max_load_freq = load_freq;
+
 	}
 
 	for_each_online_cpu(j) {
@@ -880,14 +891,18 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	/* Check for frequency increase */
 	if (max_load_freq > dbs_tuners_ins.up_threshold * policy->cur) {
 		/* If switching to max speed, apply sampling_down_factor */
-		if (policy->cur < policy->max)
+                //20140108 VNA-1514 IsonYHHung start
+		dbs_freq_increase(policy, policy->max);
+		if (policy->cur == policy->cpuinfo.max_freq)
+		//if (policy->cur < policy->max)
 			this_dbs_info->rate_mult =
 				dbs_tuners_ins.sampling_down_factor;
-		dbs_freq_increase(policy, policy->max);
+		//dbs_freq_increase(policy, policy->max);
+		//20140108 VNA-1514 IsonYHHung end
 		return;
 	}
-
-	if (num_online_cpus() > 1) {
+//20140424 VNA-4488 IsonYHHung start
+	/*if (num_online_cpus() > 1) {
 
 		if (max_load_other_cpu >
 				dbs_tuners_ins.up_threshold_any_cpu_load) {
@@ -904,8 +919,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 						dbs_tuners_ins.optimal_freq);
 			return;
 		}
-	}
-
+	}*/
+//20140424 VNA-4488 IsonYHHung end
 	/* Check for frequency decrease */
 	/* if we cannot reduce the frequency anymore, break out early */
 	if (policy->cur == policy->min)
@@ -929,8 +944,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 		if (freq_next < policy->min)
 			freq_next = policy->min;
-
-		if (num_online_cpus() > 1) {
+//20140424 VNA-4488 IsonYHHung start
+		/*if (num_online_cpus() > 1) {
 			if (max_load_other_cpu >
 			(dbs_tuners_ins.up_threshold_multi_core -
 			dbs_tuners_ins.down_differential) &&
@@ -944,7 +959,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 				freq_next < dbs_tuners_ins.optimal_freq)
 				freq_next = dbs_tuners_ins.optimal_freq;
 
-		}
+		}*/
+//20140424 VNA-4488 IsonYHHung end
 		if (!dbs_tuners_ins.powersave_bias) {
 			__cpufreq_driver_target(policy, freq_next,
 					CPUFREQ_RELATION_L);
@@ -1056,8 +1072,11 @@ static void dbs_refresh_callback(struct work_struct *work)
 
 	if (dbs_tuners_ins.input_boost)
 		target_freq = dbs_tuners_ins.input_boost;
-	else
-		target_freq = policy->max;
+
+        //VNA-1748 20140219 IsonYhhung start
+	/*else
+		target_freq = policy->max; */
+        //VNA-1748 20140219 IsonYhhung start
 
 	if (policy->cur < target_freq) {
 		/*
@@ -1384,6 +1403,9 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 	case CPUFREQ_GOV_LIMITS:
 		mutex_lock(&this_dbs_info->timer_mutex);
+		//Case 01999170, patch Qcom solution prevent kernel panic
+		if(this_dbs_info->cur_policy != 0)
+		{
 		if (policy->max < this_dbs_info->cur_policy->cur)
 			__cpufreq_driver_target(this_dbs_info->cur_policy,
 				policy->max, CPUFREQ_RELATION_H);
@@ -1395,6 +1417,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				this_dbs_info->cur_policy,
 				policy,
 				dbs_tuners_ins.powersave_bias);
+		}
 		mutex_unlock(&this_dbs_info->timer_mutex);
 		break;
 	}

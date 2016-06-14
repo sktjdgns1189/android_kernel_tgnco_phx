@@ -104,7 +104,6 @@ void unlock_policy_rwsem_write(int cpu)
 	up_write(&per_cpu(cpu_policy_rwsem, policy_cpu));
 }
 
-
 /* internal prototypes */
 static int __cpufreq_governor(struct cpufreq_policy *policy,
 		unsigned int event);
@@ -208,6 +207,19 @@ static void cpufreq_cpu_put_sysfs(struct cpufreq_policy *data)
 {
 	__cpufreq_cpu_put(data, 1);
 }
+
+//20141223 VNAL-537 IsonYHHung start
+struct _cpufreq_subsys_opt *cpufreq_subsys_opt = NULL;
+
+void register_cpufreq_subsys_opt(struct _cpufreq_subsys_opt *opt)
+{
+	cpufreq_subsys_opt = opt;
+}
+
+EXPORT_SYMBOL_GPL(register_cpufreq_subsys_opt);
+EXPORT_SYMBOL_GPL(trace_cpufreq_ondemand_cpuload);
+EXPORT_SYMBOL_GPL(trace_cpufreq_suppression);
+//20141223 VNAL-537 IsonYHHung end
 
 /*********************************************************************
  *            EXTERNALLY AFFECTING FREQUENCY CHANGES                 *
@@ -1010,6 +1022,8 @@ static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 		pr_debug("initialization failed\n");
 		goto err_unlock_policy;
 	}
+
+
 	policy->user_policy.min = policy->min;
 	policy->user_policy.max = policy->max;
 
@@ -1523,6 +1537,11 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 
 	if (cpufreq_disabled())
 		return -ENODEV;
+
+//20141223 VNAL-537 IsonYHHung start
+if(cpufreq_subsys_opt)
+		target_freq = cpufreq_subsys_opt->freq_tuning(policy, target_freq);
+//20141223 VNAL-537 IsonYHHung end
 
 	pr_debug("target for CPU %u: %u kHz, relation %u\n", policy->cpu,
 		target_freq, relation);

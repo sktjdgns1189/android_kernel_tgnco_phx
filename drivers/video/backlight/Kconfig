@@ -361,6 +361,18 @@ config BACKLIGHT_PANDORA
 	  If you have a Pandora console, say Y to enable the
 	  backlight driver.
 
+config BACKLIGHT_LM3630
+	tristate "Backlight driver for TI LM3630"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	help
+	  This supports TI LM3630 backlight driver.
+
+config BACKLIGHT_RT4501
+	tristate "Backlight driver for RT4501"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	help
+	  This supports RT4501 backlight driver.
+
 endif # BACKLIGHT_CLASS_DEVICE
 
 endif # BACKLIGHT_LCD_SUPPORT

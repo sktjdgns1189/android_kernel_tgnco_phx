@@ -29,6 +29,66 @@
 
 #include "power.h"
 
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 {
+#define FIH_POWERLOG
+#ifdef FIH_POWERLOG
+#include <linux/proc_fs.h>
+#include <mach/qpnp-int.h>
+
+static unsigned long sleep_time_diff_sec = 0;
+static unsigned long sleep_time_diff_nanosec = 0;
+static const char* wake_lock_name_ptr = "not set";
+static int wait_for_update = -1;
+static int suspend_count = 0;
+static DEFINE_SPINLOCK(list_lock);
+static int powerlog_stats_show(struct seq_file *m, void *unused)
+{
+	unsigned long irqflags;
+	int ret;
+	wake_lock_name_ptr = get_last_irq_name();
+	if(!wake_lock_name_ptr){
+		spin_lock_irqsave(&list_lock, irqflags);
+		ret = seq_printf(m,"%lu.%lu,%s,%d\n", sleep_time_diff_sec, sleep_time_diff_nanosec, "err", suspend_count);
+		sleep_time_diff_sec = 0;
+		sleep_time_diff_nanosec = 0;
+		suspend_count = 0;
+		spin_unlock_irqrestore(&list_lock, irqflags);
+		return 0;
+	}else{
+		if(wait_for_update == -1){
+			spin_lock_irqsave(&list_lock, irqflags);
+			ret = seq_printf(m,"wait");
+			spin_unlock_irqrestore(&list_lock, irqflags);
+			wait_for_update = 1;
+			return 0;
+		}else{
+			spin_lock_irqsave(&list_lock, irqflags);
+			set_last_irq(-1);
+			ret = seq_printf(m,"%lu.%lu,%s,%d\n", sleep_time_diff_sec, sleep_time_diff_nanosec, wake_lock_name_ptr, suspend_count);
+			sleep_time_diff_sec = 0;
+			sleep_time_diff_nanosec = 0;
+			suspend_count = 0;
+			spin_unlock_irqrestore(&list_lock, irqflags);
+			return 0;
+		}
+	}
+}
+
+static int powerlog_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, powerlog_stats_show, NULL);
+}
+
+static const struct file_operations powerlog_stats_fops = {
+	.owner = THIS_MODULE,
+	.open = powerlog_stats_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 }
+
 const char *const pm_states[PM_SUSPEND_MAX] = {
 #ifdef CONFIG_EARLYSUSPEND
 	[PM_SUSPEND_ON]		= "on",
@@ -48,6 +108,11 @@ void suspend_set_ops(const struct platform_suspend_ops *ops)
 	lock_system_sleep();
 	suspend_ops = ops;
 	unlock_system_sleep();
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 {
+#ifdef FIH_POWERLOG
+	proc_create("powerlog", S_IRUGO, NULL, &powerlog_stats_fops);
+#endif
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 }
 }
 EXPORT_SYMBOL_GPL(suspend_set_ops);
 
@@ -201,6 +266,10 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
  * suspend_devices_and_enter - Suspend devices and enter system sleep state.
  * @state: System sleep state to enter.
  */
+#ifdef CONFIG_FIH_IPO
+extern int fih_ipo_need_suspend(void);
+extern int fih_ipo_get_suspend_state(void);
+#endif
 int suspend_devices_and_enter(suspend_state_t state)
 {
 	int error;
@@ -215,6 +284,9 @@ int suspend_devices_and_enter(suspend_state_t state)
 		if (error)
 			goto Close;
 	}
+#ifdef CONFIG_FIH_IPO
+Suspend:
+#endif
 	suspend_console();
 	suspend_test_start();
 	error = dpm_suspend_start(PMSG_SUSPEND);
@@ -236,6 +308,11 @@ int suspend_devices_and_enter(suspend_state_t state)
 	dpm_resume_end(PMSG_RESUME);
 	suspend_test_finish("resume devices");
 	resume_console();
+#ifdef CONFIG_FIH_IPO
+	if(fih_ipo_get_suspend_state() == 1 && fih_ipo_need_suspend() == 1) {
+		goto Suspend;
+	}
+#endif
  Close:
 	if (suspend_ops->end)
 		suspend_ops->end();
@@ -327,17 +404,62 @@ int pm_suspend(suspend_state_t state)
 {
 	int error;
 
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 {
+#ifdef FIH_POWERLOG
+	struct timespec ts_entry, ts_exit, ts_diff;
+	int last_irq;
+#endif
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 }
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 
 	pm_suspend_marker("entry");
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 {
+#ifdef FIH_POWERLOG
+	getnstimeofday(&ts_entry);
+#endif
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 }
+#ifdef FIH_POWERLOG
+	last_irq = get_last_irq();
+	set_last_irq(-1);
+	wait_for_update = -1;
+#endif
 	error = enter_state(state);
 	if (error) {
+#ifdef FIH_POWERLOG
+		set_last_irq(last_irq);
+#endif
 		suspend_stats.fail++;
 		dpm_save_failed_errno(error);
 	} else {
 		suspend_stats.success++;
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 {
+#ifdef FIH_POWERLOG
+		getnstimeofday(&ts_exit);
+		if ((ts_exit.tv_nsec - ts_entry.tv_nsec) < 0) {
+			ts_diff.tv_sec = ts_exit.tv_sec - ts_entry.tv_sec - 1;
+			ts_diff.tv_nsec = 1000000000 + ts_exit.tv_nsec - ts_entry.tv_nsec;
+		} else {
+			ts_diff.tv_sec = ts_exit.tv_sec - ts_entry.tv_sec;
+			ts_diff.tv_nsec = ts_exit.tv_nsec - ts_entry.tv_nsec;
+		}
+
+		pr_info("PowerMonitor, once sleep for %lu secs, %lu nanosecs", ts_diff.tv_sec, ts_diff.tv_nsec);
+		sleep_time_diff_sec = sleep_time_diff_sec + ts_diff.tv_sec;
+		sleep_time_diff_nanosec = sleep_time_diff_nanosec + ts_diff.tv_nsec;
+
+		if(sleep_time_diff_nanosec > 1000000000){
+			sleep_time_diff_sec = sleep_time_diff_sec + 1;
+			sleep_time_diff_nanosec = sleep_time_diff_nanosec - 1000000000;
+		}
+		pr_info("PowerMonitor wake lock: %s", wake_lock_name_ptr);
+		suspend_count++;
+#endif
+//KashKHYang@FIHTDC add for RFY-25, PowerMonitor to get sleep time, 2013/11/25 }
 	}
+#ifdef FIH_POWERLOG
+	wait_for_update = 1;
+#endif
 	pm_suspend_marker("exit");
 	return error;
 }

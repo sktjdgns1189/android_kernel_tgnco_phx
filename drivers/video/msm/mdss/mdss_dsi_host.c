@@ -27,6 +27,7 @@
 #include "mdss_dsi.h"
 #include "mdss_panel.h"
 #include "mdss_debug.h"
+#include "mdss_mdp.h"
 
 #define VSYNC_PERIOD 17
 
@@ -396,6 +397,48 @@ void mdss_dsi_set_tx_power_mode(int mode, struct mdss_panel_data *pdata)
 
 	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x3c, data);
 }
+
+#ifdef CONFIG_MIPI_DSI_MDSS_REG_DUMP
+/* dump DSI registers */
+void mipi_dsi_dump(struct mdss_dsi_ctrl_pdata *ctrl)
+{
+	int i=0;
+	unsigned char *base;
+	base = ctrl->ctrl_base;
+
+	mdelay(500);
+
+	pr_err("%s: ============ DSI Reg DUMP ============\n", __func__);
+	while((4*i)<0x5a0)
+		pr_err("%#08x: %08x %08x %08x %08x\n", 4*i, MIPI_INP(base+4*(i++)), MIPI_INP(base+4*(i++)), MIPI_INP(base+4*(i++)), MIPI_INP(base+4*(i++)));
+	pr_err("%s: ================= END ================\n", __func__);
+}
+
+/* dump DMDSS registers */
+void mdp5_dump_regs(void)
+{
+	int i, z, start, len;
+	int offsets[] = {0x0};
+	int length[] = {19776};
+
+	pr_err("%s: ============ MDSS Reg DUMP =============\n", __func__);
+	for (i = 0; i < sizeof(offsets) / sizeof(int); i++) {
+		start = offsets[i];
+		len = length[i];
+		pr_err("-------- Address %05x: -------\n", start);
+		for (z = 0; z < len; z++) {
+			if ((z & 3) == 0)
+				printk("%05x:", start + (z * 4));
+			printk(" %08x", MDSS_MDP_REG_READ(start + (z * 4)));
+			if ((z & 3) == 3)
+				printk("\n");
+		}
+		if ((z & 3) != 0)
+			pr_err("\n");
+	}
+	pr_err("%s: ================= END ==================\n", __func__);
+}
+#endif
 
 void mdss_dsi_sw_reset(struct mdss_panel_data *pdata)
 {
@@ -1100,13 +1143,21 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	char *bp;
 	unsigned long size, addr;
 	struct mdss_dsi_ctrl_pdata *mctrl = NULL;
-
+#ifdef CONFIG_MIPI_CMD_DUMP
+	int i;
+#endif
 	bp = tp->data;
 
 	len = ALIGN(tp->len, 4);
 	size = ALIGN(tp->len, SZ_4K);
 
-
+#ifdef CONFIG_MIPI_CMD_DUMP
+	/* Add for dump kernel mipi command. */
+	pr_err("%s: ", __func__);
+	for (i = 0; i < tp->len; i++)
+		pr_err("%x ", *bp++);
+	pr_err("\n");
+#endif
 	if (is_mdss_iommu_attached()) {
 		ret = msm_iommu_map_contig_buffer(tp->dmap,
 					mdss_get_iommu_domain(domain), 0,
@@ -1146,8 +1197,11 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 
 	ret = wait_for_completion_timeout(&ctrl->dma_comp,
 				msecs_to_jiffies(DMA_TX_TIMEOUT));
-	if (ret == 0)
+	if (ret == 0) {
+		printk("BBox;%s: MIPI fail\n", __func__);
+		printk("BBox::UEC;0::0\n");
 		ret = -ETIMEDOUT;
+	}
 	else
 		ret = tp->len;
 

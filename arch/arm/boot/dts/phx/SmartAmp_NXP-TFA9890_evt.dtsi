@@ -1,0 +1,7 @@
+&soc {
+	i2c_1: i2c@f9923000 {
+		qcom,i2c-bus-freq = <400000>;
+		qcom,master-id = <85>;
+		status = "ok";
+	};
+};

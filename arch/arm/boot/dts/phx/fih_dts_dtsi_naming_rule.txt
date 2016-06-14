@@ -1,0 +1,24 @@
+1. Level 1: dts naming rule
+"QC chip ID"_"Project Name"_"HW phase".dts
+msm8974_vm2_evb.dts
+
+2. Level 2: dtsi naming rule
+"QC chip ID"_"HW phase".dtsi
+msm8974_evb.dtsi
+
+Note: file should be stored in .../dts/vm2/ folder
+
+3. Level 3: key component dtsi file naming rule
+Case 1: QC platform independent:
+"Key component name"_" Supplier"-"Part Number"_"HW phase".dtsi
+ex: Touch_Focal-FT5406DQ9_evb.dtsi
+
+Case 2: QC platform dependent:
+"Key component name"_"HW phase".dtsi
+ex: GPIO_evb.dtsi
+
+Case 3: FIH specific feature:
+"FIH specific feature"_"HW phase".dtsi
+ex: memmap_evb.dtsi
+
+Note: file should be stored in .../dts/vm2/ folder

@@ -14,6 +14,7 @@
 #include <linux/list.h>
 #include <linux/gfp.h>
 #include <net/tcp.h>
+#include <fih/hwid.h> // BillieLBShen@FIHTDC modify for PHXL-4357 IOT, 2015/03/05
 
 int sysctl_tcp_max_ssthresh = 0;
 
@@ -140,7 +141,13 @@ int tcp_set_default_congestion_control(const char *name)
 /* Set default value from kernel configuration at bootup */
 static int __init tcp_congestion_default(void)
 {
-	return tcp_set_default_congestion_control(CONFIG_DEFAULT_TCP_CONG);
+    // BillieLBShen@FIHTDC modify for PHXL-4357 IOT, 2015/03/05 {
+    switch (fih_hwid_fetch(FIH_HWID_PRJ)) {
+        case FIH_PRJ_PHX: return tcp_set_default_congestion_control("bic");;
+        default: break;
+    }
+    // BillieLBShen@FIHTDC modify for PHXL-4357 IOT, 2015/03/05 }
+    return tcp_set_default_congestion_control(CONFIG_DEFAULT_TCP_CONG);
 }
 late_initcall(tcp_congestion_default);
 

@@ -38,6 +38,12 @@
 #include <media/radio-iris.h>
 #include <asm/unaligned.h>
 
+#define BBSLOG
+#ifdef BBSLOG
+#define FM_PROBE_ERROR do {printk("BBox;%s: Power on failure\n", __func__); printk("BBox::UEC;15::0\n");} while(0)
+#define FM_HCI_ERROR do {printk("BBox;%s: HCI cmd transfer failure\n", __func__); printk("BBox::UEC;15::1\n");} while(0)
+#endif
+
 static unsigned int rds_buf = 100;
 static int oda_agt;
 static int grp_mask;
@@ -1645,7 +1651,7 @@ static int hci_fm_set_cal_req_proc(struct radio_hci_dev *hdev,
 	opcode = hci_opcode_pack(HCI_OGF_FM_COMMON_CTRL_CMD_REQ,
 		HCI_OCF_FM_SET_CALIBRATION);
 	return radio_hci_send_cmd(hdev, opcode,
-		sizeof(hci_fm_set_cal_req_proc), cal_req);
+		sizeof(struct hci_fm_set_cal_req_proc), cal_req);
 }
 
 static int hci_fm_do_cal_req(struct radio_hci_dev *hdev,
@@ -3767,6 +3773,9 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 				FMDERR("Error while enabling RECV FM"
 							" %d\n", retval);
 				radio->mode = FM_OFF;
+#ifdef BBSLOG
+				FM_HCI_ERROR;
+#endif
 				goto END;
 			} else {
 				retval = initialise_recv(radio);
@@ -3796,6 +3805,9 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 				FMDERR("Error while enabling TRANS FM"
 							" %d\n", retval);
 				radio->mode = FM_OFF;
+#ifdef BBSLOG
+				FM_HCI_ERROR;
+#endif
 				goto END;
 			} else {
 				retval = initialise_trans(radio);
@@ -5119,12 +5131,18 @@ static int __init iris_probe(struct platform_device *pdev)
 
 	if (!pdev) {
 		FMDERR(": pdev is null\n");
+#ifdef BBSLOG
+		FM_PROBE_ERROR;
+#endif
 		return -ENOMEM;
 	}
 
 	radio = kzalloc(sizeof(struct iris_device), GFP_KERNEL);
 	if (!radio) {
 		FMDERR(": Could not allocate radio device\n");
+#ifdef BBSLOG
+		FM_PROBE_ERROR;
+#endif
 		return -ENOMEM;
 	}
 
@@ -5135,6 +5153,9 @@ static int __init iris_probe(struct platform_device *pdev)
 	if (!radio->videodev) {
 		FMDERR(": Could not allocate V4L device\n");
 		kfree(radio);
+#ifdef BBSLOG
+		FM_PROBE_ERROR;
+#endif
 		return -ENOMEM;
 	}
 
@@ -5162,6 +5183,9 @@ static int __init iris_probe(struct platform_device *pdev)
 				kfifo_free(&radio->data_buf[i]);
 			video_device_release(radio->videodev);
 			kfree(radio);
+#ifdef BBSLOG
+			FM_PROBE_ERROR;
+#endif
 			return -ENOMEM;
 		}
 	}
@@ -5186,6 +5210,9 @@ static int __init iris_probe(struct platform_device *pdev)
 		for (; i > -1; i--)
 			kfifo_free(&radio->data_buf[i]);
 		kfree(radio);
+#ifdef BBSLOG
+		FM_PROBE_ERROR;
+#endif
 		return retval;
 	} else {
 		priv_videodev = kzalloc(sizeof(struct video_device),
@@ -5199,6 +5226,9 @@ static int __init iris_probe(struct platform_device *pdev)
 			for (; i > -1; i--)
 				kfifo_free(&radio->data_buf[i]);
 			kfree(radio);
+#ifdef BBSLOG
+			FM_PROBE_ERROR;
+#endif
 			return -ENOMEM;
 		}
 	}

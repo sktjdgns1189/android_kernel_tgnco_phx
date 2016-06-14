@@ -1,0 +1,12 @@
+
+&soc {
+	fih,headset {
+		status = "okay";
+		compatible = "fih,headset";
+
+		fih,headset-gpio = <&pm8941_gpios 22 0>;
+		fih,button-gpio = <&pm8941_gpios 30 0>;
+		fih,headset-gpio-insert-low;
+		fih,button-gpio-press-low;
+	};
+};

@@ -1,0 +1,42 @@
+TI DRV2603 Haptics driver with LRA/ERM
+
+The DRV2603 is a haptics driver designed specifically to solve common obstacles
+in driving both Linear Resonance Actuator (LRA) and Eccentric Rotating Mass (ERM)
+hpatic elements.
+
+Required properties:
+
+ - status: "okay" or "disabled" for this feature
+ - compatible : Must be "ti,drv2603"
+ - drv2603,en_gpio : Enable pin.
+ - drv2603,pwm_gpio : PWM input pin.
+ - drv2603,mode_ctrl : control mode: 0 or 1 means PWM or CLK.
+
+Optional properties:
+
+ - drv2603,default_level : The level which pwm percentage for turn on:
+				range: 1 ~ 50 (Default: 50)
+
+ - drv2603,max_timeout_ms : The max time for turn on vibrator, Default: 15000.
+
+ - drv2603,vib_break_ms : The break time when turn off, Default: 10.
+
+ - drv2603,pwm_channel : PWM channel index, need to check the PWM provider. (Only
+				for PWM mode)
+
+ - drv2603,pwm_freq_hz : The pwm specific freq, Default:3000. (Only for PWM mode)
+
+Example:
+&soc {
+	ti,drv2603 {
+		status = "okay";
+		compatible = "ti,drv2603";
+		drv2603,en_gpio = <&msmgpio 86 0>;
+		drv2603,pwm_gpio = <&pm8941_gpios 16 0>;
+		drv2603,mode_ctrl = <1>;
+
+		drv2603,default_level = <50>;
+		drv2603,max_timeout_ms = <15000>;
+		drv2603,vib_break_ms = <10>;
+	};
+};

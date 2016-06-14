@@ -54,6 +54,7 @@
 
 #include "mdss_fb.h"
 #include "mdss_mdp_splash_logo.h"
+#include "mdss_mdp.h"
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
@@ -198,7 +199,7 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 }
 
 static int lcd_backlight_registered;
-
+static int pr_bl_lv = 0;
 static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 				      enum led_brightness value)
 {
@@ -212,6 +213,15 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 	   driver backlight level 0 to bl_max with rounding */
 	MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 				mfd->panel_info->brightness_max);
+
+	if (bl_lvl == 0) {
+		pr_info("bl_lvl = %d\n", bl_lvl);
+		pr_bl_lv = 0;
+	}
+	else if (pr_bl_lv == 0){
+		pr_info("bl_lvl = %d\n", bl_lvl);
+		pr_bl_lv = 1;
+	}
 
 	if (!bl_lvl && value)
 		bl_lvl = 1;
@@ -483,6 +493,153 @@ static int mdss_fb_lpm_enable(struct msm_fb_data_type *mfd, int mode)
 	return 0;
 }
 
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+static ssize_t msm_fb_cabc_setting_write(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int cmd = 0, ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_data *pdata;
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+
+	if (sscanf(buf, "%d", &cmd) <= 0) {
+		pr_err("%s: get user-space data failed\n", __func__);
+		return -EINVAL;
+	}
+
+	pdata->cabc_setting = cmd;
+
+	if (!mfd->panel_power_on)
+		return count;
+
+	if ((!pdata) || (!pdata->set_cabc)) {
+		pr_err("%s: function not support\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = pdata->set_cabc(pdata);
+	if (ret) {
+		pr_err("%s: send mipi command fail\n", __func__);
+	}
+
+	return count;
+}
+
+static ssize_t msm_fb_cabc_setting_read(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	int ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_data *pdata;
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+
+	ret += sprintf(buf + ret, "%d\n", pdata->cabc_setting);
+
+	return ret;
+}
+#endif
+
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+static ssize_t msm_fb_color_temperature_write(struct device *dev,
+                struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_data *pdata;
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+
+	memset(pdata->color_temperature, '\0', sizeof(pdata->color_temperature));
+	strncpy(pdata->color_temperature, buf, 4);
+	pr_debug("[DISPLAY] reveived %s\n", pdata->color_temperature);
+
+	if (!mfd->panel_power_on)
+		return count;
+
+	if ((!pdata) || (!pdata->set_color_temperature)) {
+		pr_err("%s: function not support\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = pdata->set_color_temperature(pdata);
+	if (ret) {
+		pr_err("%s: send mipi command fail\n", __func__);
+	}
+
+	return count;
+}
+
+static ssize_t msm_fb_color_temperature_read(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	int ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_data *pdata;
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+
+	ret += sprintf(buf + ret, "%s\n", pdata->color_temperature);
+
+	return ret;
+}
+#endif
+
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+static ssize_t msm_fb_color_mode_write(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int cmd = 0, ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_data *pdata;
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+
+	if (sscanf(buf, "%d", &cmd) <= 0) {
+		pr_err("%s: get user-space data failed\n", __func__);
+		return -EINVAL;
+	}
+
+	pdata->color_mode_on = cmd;
+
+	if (!mfd->panel_power_on)
+		return count;
+
+	if ((!pdata) || (!pdata->set_color_mode)) {
+		pr_err("%s: function not support\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = pdata->set_color_mode(pdata);
+	if (ret) {
+		pr_err("%s: send mipi command fail\n", __func__);
+	}
+
+	return count;
+}
+
+static ssize_t msm_fb_color_mode_read(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	int ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_data *pdata;
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+
+	ret += sprintf(buf + ret, "%d\n", pdata->color_mode_on);
+
+	return ret;
+}
+#endif
+
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO, mdss_fb_get_split, NULL);
 static DEVICE_ATTR(show_blank_event, S_IRUGO, mdss_mdp_show_blank_event, NULL);
@@ -490,6 +647,15 @@ static DEVICE_ATTR(idle_time, S_IRUGO | S_IWUSR | S_IWGRP,
 	mdss_fb_get_idle_time, mdss_fb_set_idle_time);
 static DEVICE_ATTR(idle_notify, S_IRUGO, mdss_fb_get_idle_notify, NULL);
 static DEVICE_ATTR(msm_fb_panel_info, S_IRUGO, mdss_fb_get_panel_info, NULL);
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+static DEVICE_ATTR(msm_fb_cabc_setting, S_IRUGO|S_IWUSR, msm_fb_cabc_setting_read, msm_fb_cabc_setting_write);
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+static DEVICE_ATTR(color_temperature, S_IRUGO|S_IWUSR, msm_fb_color_temperature_read, msm_fb_color_temperature_write);
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+static DEVICE_ATTR(msm_fb_color_mode, S_IRUGO|S_IWUSR, msm_fb_color_mode_read, msm_fb_color_mode_write);
+#endif
 
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
@@ -498,6 +664,15 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_idle_time.attr,
 	&dev_attr_idle_notify.attr,
 	&dev_attr_msm_fb_panel_info.attr,
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	&dev_attr_msm_fb_cabc_setting.attr,
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	&dev_attr_color_temperature.attr,
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+	&dev_attr_msm_fb_color_mode.attr,
+#endif
 	NULL,
 };
 
@@ -893,7 +1068,15 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 	if (((!mfd->panel_power_on && mfd->dcm_state != DCM_ENTER)
 		|| !mfd->bl_updated) && !IS_CALIB_MODE_BL(mfd)) {
 		mfd->unset_bl_level = bkl_lvl;
+#if 0
+		/*
+		 * remove it to fix resume no backlight issue. After press
+		 * the power key, backlight level has been change from
+		 * framework. But this change must be transmited to backlight
+		 * driver.
+		 */
 		return;
+#endif
 	} else {
 		mfd->unset_bl_level = 0;
 	}
@@ -1908,6 +2091,14 @@ void mdss_fb_wait_for_fence(struct msm_sync_pt_data *sync_pt_data)
 		if (ret == -ETIME) {
 			pr_warn("%s: sync_fence_wait timed out! ",
 					sync_pt_data->fence_name);
+#if 1
+			/* add for Qualcomm case #01501267, [MO7] mdss fence timeout again */
+			printk(" 0x110: %08x\n 0x114: %08x\n 0x12d00: %08x\n", MDSS_MDP_REG_READ(0x110), MDSS_MDP_REG_READ(0x114), MDSS_MDP_REG_READ(0x12d00));
+			msleep(3000);
+			printk(" 0x114: %08x\n 0x12d00: %08x\n", MDSS_MDP_REG_READ(0x114), MDSS_MDP_REG_READ(0x12d00));
+			msleep(3000);
+			printk(" 0x114: %08x\n 0x12d00: %08x\n", MDSS_MDP_REG_READ(0x114), MDSS_MDP_REG_READ(0x12d00));
+#endif
 			pr_cont("Waiting %ld more seconds\n",
 					WAIT_FENCE_FINAL_TIMEOUT/MSEC_PER_SEC);
 			ret = sync_fence_wait(fences[i],

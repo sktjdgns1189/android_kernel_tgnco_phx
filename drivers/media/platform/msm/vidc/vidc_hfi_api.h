@@ -1160,7 +1160,11 @@ struct hfi_device {
 			int *domain_num, int *partition_num);
 	int (*load_fw)(void *dev);
 	void (*unload_fw)(void *dev);
+/* FIH, Case 02017411 patch { */
+#if (0)
 	int (*resurrect_fw)(void *dev);
+#endif
+/* FIH, Case 02017411 patch } */
 	int (*get_fw_info)(void *dev, enum fw_info info);
 	int (*get_info) (void *dev, enum dev_info info);
 	int (*get_stride_scanline)(int color_fmt, int width,

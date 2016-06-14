@@ -29,7 +29,8 @@
 #define CYCLES_PER_MICRO_SEC 4915
 #define CCI_MAX_DELAY 10000
 
-#define CCI_TIMEOUT msecs_to_jiffies(100)
+/*#define CCI_TIMEOUT msecs_to_jiffies(100)*/
+#define CCI_TIMEOUT msecs_to_jiffies(1000) //FIH: Change I2c timeout to 1000 to fix read/write timing issues.
 
 /* TODO move this somewhere else */
 #define MSM_CCI_DRV_NAME "msm_cci"
@@ -98,8 +99,17 @@ static void msm_cci_flush_queue(struct cci_device *cci_dev,
 	int32_t rc = 0;
 
 	msm_camera_io_w(1 << master, cci_dev->base + CCI_HALT_REQ_ADDR);
-	rc = wait_for_completion_timeout(
-		&cci_dev->cci_master_info[master].reset_complete, CCI_TIMEOUT);
+
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, start*/
+	do {
+	rc = wait_for_completion_interruptible_timeout(
+			&cci_dev->cci_master_info[master].reset_complete,
+			CCI_TIMEOUT);
+		if (rc != -ERESTARTSYS)
+			break;
+	} while (1);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, end*/
+
 	if (rc < 0) {
 		pr_err("%s:%d wait failed\n", __func__, __LINE__);
 	} else if (rc == 0) {
@@ -117,9 +127,15 @@ static void msm_cci_flush_queue(struct cci_device *cci_dev,
 				cci_dev->base + CCI_RESET_CMD_ADDR);
 
 		/* wait for reset done irq */
-		rc = wait_for_completion_timeout(
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, start*/
+		do {
+		rc = wait_for_completion_interruptible_timeout(
 			&cci_dev->cci_master_info[master].reset_complete,
 			CCI_TIMEOUT);
+			if (rc != -ERESTARTSYS)
+				break;
+		} while (1);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, end*/
 		if (rc <= 0)
 			pr_err("%s:%d wait failed %d\n", __func__, __LINE__,
 				rc);
@@ -158,8 +174,16 @@ static int32_t msm_cci_validate_queue(struct cci_device *cci_dev,
 		msm_camera_io_w(reg_val, cci_dev->base + CCI_QUEUE_START_ADDR);
 		CDBG("%s line %d wait_for_completion_interruptible\n",
 			__func__, __LINE__);
-		rc = wait_for_completion_timeout(&cci_dev->
-			cci_master_info[master].reset_complete, CCI_TIMEOUT);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, start*/
+		do {
+			rc = wait_for_completion_interruptible_timeout(
+			  &cci_dev->cci_master_info[master].reset_complete,
+			  CCI_TIMEOUT);
+			if (rc != -ERESTARTSYS)
+				break;
+		} while (1);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, end*/
+
 		if (rc <= 0) {
 			pr_err("%s: wait_for_completion_timeout %d\n",
 				 __func__, __LINE__);
@@ -181,7 +205,7 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 	uint16_t i = 0, j = 0, k = 0, h = 0, len = 0;
 	int32_t rc = 0;
 	uint32_t cmd = 0, delay = 0;
-	uint8_t data[11];
+	uint8_t data[11]; //FIH: 10->11 for data full out of range
 	uint16_t reg_addr = 0;
 	struct msm_camera_i2c_reg_setting *i2c_msg =
 		&c_ctrl->cfg.cci_i2c_write_cfg;
@@ -415,8 +439,15 @@ static int32_t msm_cci_i2c_read(struct v4l2_subdev *sd,
 	msm_camera_io_w(val, cci_dev->base + CCI_QUEUE_START_ADDR);
 	CDBG("%s:%d E wait_for_completion_timeout\n", __func__,
 		__LINE__);
-	rc = wait_for_completion_timeout(&cci_dev->
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, start*/
+	do {
+	rc = wait_for_completion_interruptible_timeout(&cci_dev->
 		cci_master_info[master].reset_complete, CCI_TIMEOUT);
+		if (rc != -ERESTARTSYS)
+			break;
+	} while (1);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, end*/
+
 	if (rc <= 0) {
 		pr_err("%s: wait_for_completion_timeout %d\n",
 			 __func__, __LINE__);
@@ -620,8 +651,14 @@ static int32_t msm_cci_i2c_write(struct v4l2_subdev *sd,
 
 	CDBG("%s:%d E wait_for_completion_interruptible\n",
 		__func__, __LINE__);
-	rc = wait_for_completion_timeout(&cci_dev->
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, start*/
+	do {
+	rc = wait_for_completion_interruptible_timeout(&cci_dev->
 		cci_master_info[master].reset_complete, CCI_TIMEOUT);
+		if (rc != -ERESTARTSYS)
+			break;
+	} while (1);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, end*/
 	if (rc <= 0) {
 		pr_err("%s: wait_for_completion_timeout %d\n",
 			 __func__, __LINE__);
@@ -691,10 +728,17 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 				msm_camera_io_w(CCI_M1_RESET_RMSK,
 					cci_dev->base + CCI_RESET_CMD_ADDR);
 			/* wait for reset done irq */
-			rc = wait_for_completion_timeout(
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, start*/
+			do {
+			rc = wait_for_completion_interruptible_timeout(
 				&cci_dev->cci_master_info[master].
 				reset_complete,
 				CCI_TIMEOUT);
+				if (rc != -ERESTARTSYS)
+					break;
+			} while (1);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, end*/
+
 			if (rc <= 0)
 				pr_err("%s:%d wait failed %d\n", __func__,
 					__LINE__, rc);
@@ -725,9 +769,17 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 	cci_dev->cci_master_info[MASTER_0].reset_pending = TRUE;
 	msm_camera_io_w(CCI_RESET_CMD_RMSK, cci_dev->base + CCI_RESET_CMD_ADDR);
 	msm_camera_io_w(0x1, cci_dev->base + CCI_RESET_CMD_ADDR);
-	rc = wait_for_completion_timeout(
+
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, start*/
+	do {
+	rc = wait_for_completion_interruptible_timeout(
 		&cci_dev->cci_master_info[MASTER_0].reset_complete,
 		CCI_TIMEOUT);
+		if (rc != -ERESTARTSYS)
+			break;
+	} while (1);
+/*fihdc,derekcwwu,[mcs-4353], qcom patch, avoid cci error, end*/
+
 	if (rc <= 0) {
 		pr_err("%s: wait_for_completion_timeout %d\n",
 			 __func__, __LINE__);

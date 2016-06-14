@@ -1,0 +1,6 @@
+&soc {
+	qcom,fih-mem-hole {
+		compatible = "qcom,fih-mem-hole";
+		qcom,memblock-remove = <0x0FF00000 0xA00000>; /* Address and Size of Hole */
+	};
+};

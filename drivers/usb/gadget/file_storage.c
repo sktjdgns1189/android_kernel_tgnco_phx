@@ -1712,6 +1712,10 @@ static int do_read_toc(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 	int		msf = fsg->cmnd[1] & 0x02;
 	int		start_track = fsg->cmnd[6];
 	u8		*buf = (u8 *) bh->buf;
+#ifdef READ_TOC_SUPPORT_MAC_OS
+	u8	 	format;
+	int	 	ret;
+#endif
 
 	if ((fsg->cmnd[1] & ~0x02) != 0 ||		/* Mask away MSF */
 			start_track > 1) {
@@ -1719,6 +1723,7 @@ static int do_read_toc(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 		return -EINVAL;
 	}
 
+#ifndef READ_TOC_SUPPORT_MAC_OS
 	memset(buf, 0, 20);
 	buf[1] = (20-2);		/* TOC data length */
 	buf[2] = 1;			/* First track number */
@@ -1731,6 +1736,27 @@ static int do_read_toc(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 	buf[14] = 0xAA;			/* Lead-out track number */
 	store_cdrom_address(&buf[16], msf, curlun->num_sectors);
 	return 20;
+#else
+	/*
+	 * Check if CDB is old style SFF-8020i
+	 * i.e. format is in 2 MSBs of byte 9
+	 * Mac OS-X host sends us this.
+	 *
+	 *			cmnd[9]	cmnd[2]
+	 *	Win		0x00	0x0
+	 *	Mac		0x80	0x0
+	 */
+	format = (fsg->cmnd[9] >> 6) & 0x3;
+	if (format == 0)
+		format = fsg->cmnd[2] & 0xf;	/* new style MMC-2 */
+
+	ret = fsg_get_toc(curlun, msf, format, buf);
+	if (ret < 0) {
+		curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
+		return -EINVAL;
+	}
+	return ret;
+#endif
 }
 
 
@@ -2482,7 +2508,11 @@ static int do_scsi_command(struct fsg_dev *fsg)
 			goto unknown_cmnd;
 		fsg->data_size_from_cmnd = get_unaligned_be16(&fsg->cmnd[7]);
 		if ((reply = check_command(fsg, 10, DATA_DIR_TO_HOST,
+#ifdef READ_TOC_SUPPORT_MAC_OS
+				(0xf<<6) | (1<<1), 1,
+#else
 				(7<<6) | (1<<1), 1,
+#endif
 				"READ TOC")) == 0)
 			reply = do_read_toc(fsg, bh);
 		break;

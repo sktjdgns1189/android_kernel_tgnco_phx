@@ -1,0 +1,136 @@
+TI BQ2419X I2C Charger Chip
+
+The device interface is I2C, its I2C slave 7-bit address is 0x6b.
+
+Required properties:
+
+ - status: "okay" or "disabled" for this feature
+ - compatible : Must be "ti,bq2419x"
+ - reg : I2C Address must be 0x6b.
+
+Optional properties:
+
+ - interrupt-parent :			Interrupt gpio group parent.
+
+ - interrupts :				Specific gpio for interrupt, it should be same as gpio_int.
+
+ - bq2419x,gpio_int :			Open-drain interrupt output pin, send active low, 256us pulse
+					to host to report charger device status and fault.
+
+ - bq2419x,gpio_ce :			Active low charge ennable pin, battery charging is enabled when
+					REG01[5:4]=01 and CE pin = low. This must be pull high or low.
+
+ - bq2419x,gpio_psel :			Power source select input pin, high indicates a USB host source,
+					and low indicates an adapter source.
+
+ - bq2419x,gpio_chgpg :			Open-drain active low power good indicator, Low indicates a good
+					input source.
+
+ - bq2419x,gpio_chgotg :		USB current limit selection pin during buck mode, and avtive high
+					enable pin during boost mode.
+
+ - bq2419x,gpio_chgstat :		Open-drain charge status output pin, low indicates charge in progress,
+					high indicates charge complete or charge disabled, and blinks at
+					1Hz when fault occurs.
+
+ - bq2419x,psel_invert :		Invert psel control from Host to IC by HW design.
+
+ - bq2419x,chgotg_invert :		Invert otg control from Host to IC by HW design.
+
+ - bq2419x,input_voltage_mV :		Input voltage limit. Offset: 3880mV, Range: 3880~5080mV, Step: 80mV
+					(Default: 4360mV)
+
+ - bq2419x,input_current_mA_sdp :	Input current limit, It's an enum value:
+						0: 100mA, 1: 150mA, 2: 500mA, 3: 900mA
+						4: 1200mA, 5: 1500mA, 6: 2000mA, 7: 3000mA (Default:2)
+
+ - bq2419x,input_current_mA_dcp :	Input current limit, and it's an enum value,
+						0: 100mA, 1: 150mA, 2: 500mA, 3: 900mA
+						4: 1200mA, 5: 1500mA, 6: 2000mA, 7: 3000mA (Default:7)
+
+ - bq2419x,min_system_mV :		Minimum system voltage limit. Offset: 3000mV, Range: 3000~3700mV, Step: 100mV
+					(Deafault: 3500mV)
+
+ - bq2419x,prechg_current_mA :		Pre-charge current limit. Offset: 128mA, Range: 128~2048mA, Step: 128mA
+					(Default: 256mA)
+
+ - bq2419x,max_charge_current_mA :	Fast charge current limit. Offset: 512mA, Range: 512~4544mA, Step: 64mA
+					(Default: 2048mA)
+
+ - bq2419x,term_current_mA :		Termination current limit. Offset: 128mA, Range:128~2048mA, Step: 128mA
+					(Default: 256mA)
+
+ - bq2419x,max_charge_voltage_mV :	Charge voltage limit. Offset: 3504mV, Range: 3504~4400mV, Step: 16mV
+					(Default: 4208mV)
+
+ - bq2419x,pre_to_fast_mV :		Precharge to fast charge threshold voltage. It's an enum value:
+						0: 2800mV, 1: 3000mV (Default:1)
+
+ - bq2419x,otg_current_mA :		Boost mode current limit. It's an enum value:
+						0: 500mA, 1: 1300mA (Default:1)
+
+ - bq2419x,recharge_delta_mV :		Recharge threshold voltage. It's an enum value:
+						0: 100mV, 1: 300mV (Default:0)
+
+ - bq2419x,stimer_hr_sdp :		Fast charge safety timer. It's an enum value:
+						0: 5hr, 1: 8hr, 2: 12hr, 3: 20hr (Default:1)
+
+ - bq2419x,stimer_hr_dcp :		Fast charge safety timer. It's an enum value:
+						0: 5hr, 1: 8hr, 2: 12hr, 3: 20hr (Default:1)
+
+ - bq2419x,ir_resistor_mohm :		IR compensation resistor. Range: 0~70mOhm, Step: 10mOhm
+					(Default: 0Ohm)
+
+ - bq2419x,ir_voltage_mV :		IR compensation voltage. Range: 0~112mV, Step: 16mV
+					(Default: 0mV)
+
+ - bq2419x,thermal_threshold :		Thermal regulation thershold. It's an enum value:
+						0: 60 degree, 1: 80 degree
+						2: 100 degree, 3: 120 degree (Default:3)
+
+ - bq2419x,jeita_current :		JEITA current for 0~10 degree. Percentage of max_charge_current_mA, it's an enum value:
+						0: 50%, 1: 20% (Default:0)
+
+ - bq2419x,jeita_voltage :		JEITA voltage for 45~60 degree. Change max charge voltage, it's an enum value:
+						0: 4050mV, 1: 4200mV (Default:0)
+
+ - bq2419x,dynamic_vindpm :		A flag to indicate that use dynamic vindpm method or not. (1: use / 0: not use)
+
+Note: If an optional property is not specified, then the hardware default value
+will be used.
+
+Example:
+&i2c_0 {
+	ti,bq2419x@6b {
+		reg = <0x6b>;
+		compatible = "ti,bq2419x";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <82 0x2>;
+
+		/* Pin settings */
+		bq2419x,gpio_int = <&msmgpio 82 0x00>;
+		bq2419x,gpio_ce = <&msmgpio 131 0x00>;
+		bq2419x,gpio_psel = <&pm8941_gpios 12 0x00>;
+		bq2419x,gpio_chgpg = <&msmgpio 80 0x00>;
+		bq2419x,gpio_chgotg = <&msmgpio 132 0x00>;
+		bq2419x,gpio_chgstat = <&msmgpio 89 0x00>;
+
+		/* Config data */
+		bq2419x,input_voltage_mV = <4440>;
+		bq2419x,input_current_mA_sdp = <2>;
+		bq2419x,input_current_mA_dcp = <6>;
+		bq2419x,min_system_mV = <3600>;
+		bq2419x,prechg_current_mA = <512>;
+		bq2419x,max_charge_current_mA = <2048>;
+		bq2419x,term_current_mA = <256>;
+		bq2419x,max_charge_voltage_mV = <4208>;
+		bq2419x,pre_to_fast_mV = <1>;
+		bq2419x,otg_current_mA = <0>;
+		bq2419x,recharge_delta_mV = <0>;
+		bq2419x,stimer_hr_sdp = <3>;
+		bq2419x,stimer_hr_dcp = <2>;
+		bq2419x,jeita_voltage = <1>;
+		bq2419x,dynamic_vindpm = <1>;
+	};
+};
+

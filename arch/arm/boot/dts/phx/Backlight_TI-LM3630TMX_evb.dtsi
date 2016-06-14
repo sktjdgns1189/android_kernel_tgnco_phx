@@ -1,0 +1,34 @@
+&soc {
+	/* controller */
+	i2c_3: i2c@f9964000 { /* BLSP#8 */
+		cell-index = <3>;
+		compatible = "qcom,i2c-qup";
+		reg = <0xf9964000 0x1000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		interrupts = <0 102 0>;
+		interrupt-names = "qup_err_intr";
+		qcom,i2c-bus-freq = <400000>;
+		qcom,i2c-src-freq = <19200000>;
+		qcom,scl-gpio = <&msmgpio 48 0>;	/* I2C CLK */
+		qcom,sda-gpio = <&msmgpio 47 0>;	/* I2C DAT */
+		qcom,master-id = <84>;
+	};
+
+	/* device */
+	i2c@f9964000 {
+		lm3630_bl@36 {
+			compatible = "ti,lm3630";
+			reg = <0x36>;
+			def_ctrl = <0x15>;
+			def_config = <0x09>;
+			def_boost_ctrl = <0x78>;
+			def_brt = <0x38>;
+			def_current = <0x15>;
+			def_filter_str = <0x03>;
+			ti,max-brt-led = <0xFF>;
+			ti,hwen-gpio = <&pm8941_gpios 24 0x00>;
+		};
+	};
+};

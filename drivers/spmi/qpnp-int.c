@@ -79,6 +79,38 @@ static DEFINE_MUTEX(qpnpint_chips_mutex);
 
 #define QPNPINT_MAX_BUSSES 4
 struct q_chip_data *chip_lookup[QPNPINT_MAX_BUSSES];
+//KashKHYang add for PowerMonitor to get irq name, 2014/03/13 {
+#define FIH_POWERLOG
+#ifdef FIH_POWERLOG
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h> 
+static int last_irq;
+void set_last_irq(int irq){
+	pr_debug("%s : %d\n", __func__, irq);
+	last_irq = irq;
+}
+int get_last_irq(void){
+	pr_debug("%s\n", __func__);
+	return last_irq;
+}
+const char* get_last_irq_name(void)
+{
+	struct irq_desc *desc;
+	const char *name = "null";
+	if(last_irq < 0)
+		name = "not set";
+	else{
+		desc = irq_to_desc(last_irq);
+		if (desc == NULL)
+			name = "stray irq";
+		else if (desc->action && desc->action->name)
+			name = desc->action->name;
+	}
+	pr_debug("%s, last_irq: %d, desc name: %s\n", __func__, last_irq, name);
+	return name;
+}
+#endif
+//KashKHYang add for PowerMonitor to get irq name, 2014/03/13 }
 
 /**
  * qpnpint_encode_hwirq - translate between qpnp_irq_spec and
@@ -624,6 +656,15 @@ static int __qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
 	domain = chip_lookup[busno]->domain;
 	irq = irq_radix_revmap_lookup(domain, hwirq);
 
+//KashKHYang add for PowerMonitor to get irq name, 2014/03/13 {
+#ifdef FIH_POWERLOG
+	if(last_irq < 0){
+		last_irq = irq;
+	}
+	pr_debug("%s, current_irq: %d\n", __func__, irq);
+	pr_debug("%s, last_irq: %d\n", __func__, last_irq);
+#endif
+//KashKHYang add for PowerMonitor to get irq name, 2014/03/13 }
 	if (show) {
 		struct irq_desc *desc;
 		const char *name = "null";

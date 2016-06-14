@@ -1,0 +1,40 @@
+TI BQ24314C OVP detection chip
+
+The bq24314c monitors input voltage, input current and battery voltage.
+In case of an input overvoltage condition, the IC immediately removes power
+from the charging circuit by turning off an internal switch. In the case of
+an overcurrent condition, it limits the system current at the threshold value,
+and if the overcurrent persists, switches the pass element OFF after a blanking
+period. Additionally, the IC also monitors its own die temperature and switches
+off if it exceeds 140 degree.
+
+Required properties:
+
+ - status: "okay" or "disabled" for this feature
+ - compatible : Must be "ti,bq24314c"
+
+Optional properties:
+
+ - interrupt-parent :	Interrupt gpio group parent.
+
+ - interrupts :		Specific gpio for interrupt, it should be same as fault_gpio.
+
+ - bq24314c,enabled :	Specific the device has been enabled by HW or not.
+			If use this, it means the device is enabled.
+
+ - bq24314c,ce_gpio :	Internally pull-down chip enable pin, active low.
+
+ - bq24314c,fault_gpio : Open-drain output, indicates device status, low means
+			 input overvoltage, input overcurrent, battery overvoltage, or thermal shutdown.
+
+Example:
+&soc {
+	ti,bq24314c {
+		status = "okay";
+		compatible = "ti,bq24314c";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <27 0x2>;
+		bq24314c,ce_gpio = <&msmgpio 13 0>;
+		bq24314c,fault_gpio = <&msmgpio 27 0>;
+	};
+};

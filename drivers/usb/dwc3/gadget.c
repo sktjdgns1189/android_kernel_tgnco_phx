@@ -60,6 +60,15 @@
 static void dwc3_gadget_usb2_phy_suspend(struct dwc3 *dwc, int suspend);
 static void dwc3_gadget_usb3_phy_suspend(struct dwc3 *dwc, int suspend);
 
+#ifdef CONFIG_FIH_PROTECT_DWC3_CTRL_FUNC
+#include <linux/time.h>
+#define MIN_DIFF_USEC     10000
+#define MIN_ENDURE_TIMES    10
+
+static unsigned int evt_too_fast = 0;
+static unsigned int old_stamp = 0;
+static unsigned int gadget_int_lock = 0;
+#endif
 /**
  * dwc3_gadget_set_test_mode - Enables USB2 Test Modes
  * @dwc: pointer to our context structure
@@ -2102,6 +2111,23 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 		 */
 		req->request.actual += req->request.length - count;
 		dwc3_gadget_giveback(dep, req, status);
+
+		/*
+		 * By QC case 01556201
+		 *
+		 * A potential race condition could arise when dwc3_gadget_giveback()
+		 * temporarily releases the main spinlock.  If during this window
+		 * the very endpoint being handled becomes disabled, it would lead to
+		 * a NULL pointer dereference in the code that follows.  Guard against
+		 * this by making sure the endpointis still enabled after returning
+		 * from the giveback call.
+		 */
+		if (!(dep->flags & DWC3_EP_ENABLED)) {
+			dev_dbg(dwc->dev, "%s disabled while handling ep event\n",
+					dep->name);
+			return 0;
+		}
+
 		if (s_pkt)
 			break;
 		if ((event->status & DEPEVT_STATUS_LST) &&
@@ -2711,9 +2737,82 @@ static void dwc3_dump_reg_info(struct dwc3 *dwc)
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_ERROR_EVENT);
 }
 
+#ifdef CONFIG_FIH_PROTECT_DWC3_CTRL_FUNC
+static inline unsigned int get_timestamp(void)
+{
+	struct timeval tval;
+	unsigned int stamp;
+
+	do_gettimeofday(&tval);
+	/* 2^32 = 4294967296. Limit to 4096s. */
+	stamp = tval.tv_sec & 0xFFF;
+	stamp = stamp * 1000000 + tval.tv_usec;
+	return stamp;
+}
+
+static inline int check_dwc3_event_freq(u8 event)
+{
+	unsigned int stamp;
+	unsigned int diff_usec = 0;
+
+	/*Check if need unlock dwc3_gadget_interrupt*/
+	if (event == DWC3_DEVICE_EVENT_DISCONNECT) {
+		if (gadget_int_lock)
+			printk(KERN_ERR "%s:event disconnect, unlock\n",__func__);
+		evt_too_fast = 0;
+		gadget_int_lock = 0;
+		return 0;
+	}
+
+	/*Check if need lock dwc3_gadget_interrupt*/
+	if (evt_too_fast >= MIN_ENDURE_TIMES) {
+		if (!gadget_int_lock)
+			printk(KERN_ERR "%s:lock\n",__func__);
+		gadget_int_lock = 1;
+		return 1;
+	}
+
+	if (event == DWC3_DEVICE_EVENT_RESET ||
+	    event == DWC3_DEVICE_EVENT_LINK_STATUS_CHANGE) {
+		/*Get old stamp, stemp, and diff value*/
+		if (old_stamp == 0) {
+			printk(KERN_ERR "%s:old_stamp no value,get again\n",__func__);
+			old_stamp = get_timestamp();
+			return 0;
+		}
+		stamp = get_timestamp();
+		diff_usec = stamp - old_stamp;
+#if 0
+		printk(KERN_DEBUG "%s:old_stamp = %u usec\n",__func__,old_stamp);
+		printk(KERN_DEBUG "%s:stamp = %u usec\n",__func__,stamp);
+		printk(KERN_DEBUG "%s:diff = %u usec, min is %d usec\n",__func__,diff_usec,MIN_DIFF_USEC);
+#endif
+		old_stamp = stamp;
+
+		/*Count evt_too_fast times or return evt_too_fast to zero*/
+		if (diff_usec <= MIN_DIFF_USEC) {
+			evt_too_fast++;
+			if ((!gadget_int_lock) && (evt_too_fast >= (MIN_ENDURE_TIMES/2)))
+				printk(KERN_ERR "%s:evt_too_fast %d times,diff = %u usec, min is %u usec\n",
+						__func__,evt_too_fast,diff_usec,MIN_DIFF_USEC);
+		} else if ((evt_too_fast > 0) && (evt_too_fast < MIN_ENDURE_TIMES)) {
+			if ((!gadget_int_lock) && (evt_too_fast >= (MIN_ENDURE_TIMES/2)))
+				printk(KERN_ERR "%s:event diff pass\n",__func__);
+			evt_too_fast = 0;
+		}
+		gadget_int_lock = 0;
+	}
+	return 0;
+}
+#endif
+
 static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 		const struct dwc3_event_devt *event)
 {
+#ifdef CONFIG_FIH_PROTECT_DWC3_CTRL_FUNC
+	check_dwc3_event_freq(event->type);
+	if (!gadget_int_lock) {
+#endif
 	switch (event->type) {
 	case DWC3_DEVICE_EVENT_DISCONNECT:
 		dwc3_gadget_disconnect_interrupt(dwc);
@@ -2737,9 +2836,25 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 		dev_vdbg(dwc->dev, "Start of Periodic Frame\n");
 		break;
 	case DWC3_DEVICE_EVENT_ERRATIC_ERROR:
+		/*
+		 * case number 01572704
+		 * DWC3 databook suggests that upon receiving erratic error event
+		 * software should reset the controller. The way in which the
+		 * driver currently handles interrupts by offloading event processing
+		 * to a threaded handler could result in a long sequence of received
+		 * erratic errors in the event queue. dwc3_gadget_interrupt() could
+		 * then end up processing a large number of the same event unnecessarily.
+		 *
+		 * In the case of dwc3-msm, this results in KERN_INFO messages flooding
+		 * the console. Fix this by only handling erratic error once. Add
+		 * a state variable to keep track of when it is seen, and clear it
+		 * once a non-error event is processed.
+		 */
+		if (!dwc->err_evt_seen) {
 		dbg_event(0xFF, "ERROR", 0);
 		dev_vdbg(dwc->dev, "Erratic Error\n");
 		dwc3_dump_reg_info(dwc);
+		}
 		break;
 	case DWC3_DEVICE_EVENT_CMD_CMPL:
 		dev_vdbg(dwc->dev, "Command Complete\n");
@@ -2779,6 +2894,11 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 	default:
 		dev_dbg(dwc->dev, "UNKNOWN IRQ %d\n", event->type);
 	}
+
+	dwc->err_evt_seen = (event->type == DWC3_DEVICE_EVENT_ERRATIC_ERROR);
+#ifdef CONFIG_FIH_PROTECT_DWC3_CTRL_FUNC
+	}
+#endif
 }
 
 static void dwc3_process_event_entry(struct dwc3 *dwc,
@@ -2916,6 +3036,8 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 	dwc->gadget.dev.release		= dwc3_gadget_release;
 	dwc->gadget.name		= "dwc3-gadget";
 
+	dwc->err_evt_seen		= false;
+
 	/*
 	 * REVISIT: Here we should clear all pending IRQs to be
 	 * sure we're starting from a well known location.
@@ -2934,6 +3056,11 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 				irq, ret);
 		goto err5;
 	}
+#ifdef CONFIG_FIH_PROTECT_DWC3_CTRL_FUNC
+	gadget_int_lock = 0;
+	evt_too_fast = 0;
+	old_stamp = get_timestamp();
+#endif
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
 	reg |= DWC3_DCFG_LPM_CAP;

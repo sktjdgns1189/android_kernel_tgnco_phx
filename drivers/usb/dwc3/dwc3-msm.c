@@ -74,7 +74,7 @@ module_param(ss_phy_override_deemphasis, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(ss_phy_override_deemphasis, "Override SSPHY demphasis value");
 
 /* Enable Proprietary charger detection */
-static bool prop_chg_detect;
+static bool prop_chg_detect = true;
 module_param(prop_chg_detect, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(prop_chg_detect, "Enable Proprietary charger detection");
 
@@ -1753,7 +1753,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 	static bool dcd;
 	unsigned long delay;
 
-	dev_dbg(mdwc->dev, "chg detection work\n");
+	dev_info(mdwc->dev, "chg detection work\n");
 	switch (mdwc->chg_state) {
 	case USB_CHG_STATE_UNDEFINED:
 		dwc3_chg_block_reset(mdwc);
@@ -1828,7 +1828,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 				mdwc->ext_chg_active = true;
 			}
 		}
-		dev_dbg(mdwc->dev, "chg_type = %s\n",
+		dev_info(mdwc->dev, "chg_type = %s\n",
 			chg_to_string(mdwc->charger.chg_type));
 		mdwc->charger.notify_detection_complete(mdwc->otg_xceiv->otg,
 								&mdwc->charger);
@@ -2372,6 +2372,14 @@ static int dwc3_msm_power_get_property_usb(struct power_supply *psy,
 	return 0;
 }
 
+#ifdef CONFIG_BQ2419X_CHARGER
+extern void set_charger_power_supply_value(int value, enum power_supply_property psp);
+#endif
+
+#ifdef CONFIG_FIH_IPO
+extern int fih_ipo_get_suspend_state(void);
+extern int fih_ipo_set_usb_flag(void);
+#endif
 static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 				  enum power_supply_property psp,
 				  const union power_supply_propval *val)
@@ -2383,10 +2391,21 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_SCOPE:
 		mdwc->host_mode = val->intval;
+#ifdef CONFIG_BQ2419X_CHARGER
+		set_charger_power_supply_value(val->intval, POWER_SUPPLY_PROP_SCOPE);
+#endif
 		break;
 	/* Process PMIC notification in PRESENT prop */
 	case POWER_SUPPLY_PROP_PRESENT:
-		dev_dbg(mdwc->dev, "%s: notify xceiv event\n", __func__);
+		dev_info(mdwc->dev, "%s: notify xceiv event\n", __func__);
+#ifdef CONFIG_FIH_IPO
+		if (fih_ipo_get_suspend_state() && val->intval) {
+			fih_ipo_set_usb_flag();
+		}
+#endif
+#ifdef FIH_USB_RETRY_METHOD
+		check_charger_retry_count_func(0, 1);
+#endif
 		if (mdwc->otg_xceiv && !mdwc->ext_inuse &&
 		    (mdwc->ext_xceiv.otg_capability || !init)) {
 			mdwc->ext_xceiv.bsv = val->intval;
@@ -2413,6 +2432,10 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		psy->type = val->intval;
+#ifdef CONFIG_BQ2419X_CHARGER
+		pr_debug("%s: POWER_SUPPLY_PROP_TYPE= %d\n", __func__, val->intval);
+		set_charger_power_supply_value(val->intval, POWER_SUPPLY_PROP_TYPE);
+#endif
 		break;
 	default:
 		return -EINVAL;
@@ -2444,6 +2467,7 @@ static void dwc3_msm_external_power_changed(struct power_supply *psy)
 		power_supply_set_current_limit(&mdwc->usb_psy, ret.intval);
 	}
 
+	ret.intval = !!ret.intval;
 	power_supply_set_online(&mdwc->usb_psy, ret.intval);
 	power_supply_changed(&mdwc->usb_psy);
 }
@@ -2846,6 +2870,67 @@ unreg_chrdev:
 
 	return ret;
 }
+
+static ssize_t
+show_dwc3_id_pin_disable(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct dwc3_msm *mdwc = dev_get_drvdata(dev);
+
+	if(!mdwc)
+		return -EINVAL;
+
+	dev_dbg(mdwc->dev, "mdwc->id_state=%d", mdwc->id_state);
+	return sprintf(buf, "dwc3 id_state = %d\n", mdwc->id_state);
+}
+
+static ssize_t
+set_dwc3_id_pin_disable(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct dwc3_msm *mdwc = dev_get_drvdata(dev);
+	int value = 0;
+
+	if(!mdwc)
+		return -EINVAL;
+
+	sscanf(buf, "%d", &value);
+	if( (value != 1) && (value != 0) ) {
+		dev_err(mdwc->dev, "%s: set value = %d\n", __func__, value);
+		return -EINVAL;
+	}
+
+	if (mdwc->pmic_id_irq) {
+		if (value) {
+			disable_irq(mdwc->pmic_id_irq);
+			dev_dbg(mdwc->dev, "disable pmic_id_irq\n");
+		} else {
+			enable_irq(mdwc->pmic_id_irq);
+			dev_dbg(mdwc->dev, "enable pmic_id_irq\n");
+		}
+	}
+
+	if (value) {
+		if(mdwc->id_state) {
+			dev_dbg(mdwc->dev, "status is ID set\n");
+		} else {
+			dev_dbg(mdwc->dev, "status is ID clear, need to correct\n");
+			/* Correct status to ID set */
+			mdwc->id_state = 1;
+
+			/* call resume work to disable Host mode */
+			mdwc->ext_xceiv.id = mdwc->id_state;
+			dwc3_resume_work(&mdwc->resume_work.work);
+		}
+	} else {
+		/*
+		 * TODO:  Re-detect USB ID pin to recovery USB state.
+		 */
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(dwc3_id_pin_disable, 0664, show_dwc3_id_pin_disable, set_dwc3_id_pin_disable);
 
 static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 {
@@ -3294,6 +3379,11 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "Fail to setup dwc3 setup cdev\n");
 	}
 
+	ret = device_create_file(mdwc->dev, &dev_attr_dwc3_id_pin_disable);
+	if (ret) {
+		dev_err(&pdev->dev, "%s: Failed to create dwc3_id_pin_disable virtual file\n", __func__);
+	}
+
 	device_init_wakeup(mdwc->dev, 1);
 	pm_stay_awake(mdwc->dev);
 	dwc3_msm_debugfs_init(mdwc);
@@ -3347,6 +3437,8 @@ static int __devexit dwc3_msm_remove(struct platform_device *pdev)
 {
 	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
 
+	device_remove_file(mdwc->dev, &dev_attr_dwc3_id_pin_disable);
+
 	if (!mdwc->ext_chg_device) {
 		device_destroy(mdwc->ext_chg_class, mdwc->ext_chg_dev);
 		cdev_del(&mdwc->ext_chg_cdev);
@@ -3391,18 +3483,33 @@ static int __devexit dwc3_msm_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_FIH_MT_SLEEP
+int get_sleep_current_mode(void);
+#endif
 static int dwc3_msm_pm_suspend(struct device *dev)
 {
 	int ret = 0;
 	struct dwc3_msm *mdwc = dev_get_drvdata(dev);
+#ifdef CONFIG_FIH_MT_SLEEP
+	int sc = get_sleep_current_mode();
+#endif
 
 	dev_dbg(dev, "dwc3-msm PM suspend\n");
 
 	flush_delayed_work_sync(&mdwc->resume_work);
+#ifdef CONFIG_FIH_MT_SLEEP
+	if (!atomic_read(&mdwc->in_lpm) && !sc) {
+#else
 	if (!atomic_read(&mdwc->in_lpm)) {
+#endif
 		dev_err(mdwc->dev, "Abort PM suspend!! (USB is outside LPM)\n");
 		return -EBUSY;
 	}
+#ifdef CONFIG_FIH_MT_SLEEP
+	if (sc) {
+		mdwc->resume_pending = true;
+	}
+#endif
 
 	ret = dwc3_msm_suspend(mdwc);
 	if (!ret)

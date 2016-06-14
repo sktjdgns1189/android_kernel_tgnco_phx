@@ -43,6 +43,9 @@
 #define MAX_SSR_REASON_LEN	81U
 #define STOP_ACK_TIMEOUT_MS	1000
 
+//VNA-3504, add modem failure reason  
+char fih_failure_reason[MAX_SSR_REASON_LEN];  
+
 struct modem_data {
 	struct mba_data *mba;
 	struct q6v5_data *q6;
@@ -74,6 +77,10 @@ static void log_modem_sfr(void)
 
 	strlcpy(reason, smem_reason, min(size, sizeof(reason)));
 	pr_err("modem subsystem failure reason: %s.\n", reason);
+
+	//VNA-3504, add modem failure reason
+	strlcpy(fih_failure_reason, smem_reason, min(size, sizeof(reason)));
+	//pr_err("fih get failure reason: %s.\n", fih_failure_reason);
 
 	smem_reason[0] = '\0';
 	wmb();

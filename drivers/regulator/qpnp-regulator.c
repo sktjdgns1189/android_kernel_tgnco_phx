@@ -31,6 +31,10 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/qpnp-regulator.h>
 
+/* Black Box */
+#define BBOX_REGULATOR_PROBE_FAIL do {printk("BBox;%s: Probe fail\n", __func__); printk("BBox::UEC;17::0\n");} while (0);
+#define BBOX_REGULATOR_SETV_FAIL do {printk("BBox;%s: Set voltage fail\n", __func__); printk("BBox::UEC;17::2\n");} while (0);
+
 /* Debug Flag Definitions */
 enum {
 	QPNP_VREG_DEBUG_REQUEST		= BIT(0), /* Show requests */
@@ -626,10 +630,12 @@ static int qpnp_regulator_common_set_voltage(struct regulator_dev *rdev,
 			&vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_RANGE], 2);
 	}
 
-	if (rc)
+	if (rc) {
 		vreg_err(vreg, "SPMI write failed, rc=%d\n", rc);
-	else
+		BBOX_REGULATOR_SETV_FAIL;
+	} else {
 		qpnp_vreg_show_state(rdev, QPNP_REGULATOR_ACTION_VOLTAGE);
+	}
 
 	return rc;
 }
@@ -679,10 +685,12 @@ static int qpnp_regulator_boost_set_voltage(struct regulator_dev *rdev,
 	rc = qpnp_vreg_masked_write(vreg, QPNP_COMMON_REG_VOLTAGE_SET,
 	       voltage_sel, 0xFF, &vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_SET]);
 
-	if (rc)
+	if (rc) {
 		vreg_err(vreg, "SPMI write failed, rc=%d\n", rc);
-	else
+		BBOX_REGULATOR_SETV_FAIL;
+	} else {
 		qpnp_vreg_show_state(rdev, QPNP_REGULATOR_ACTION_VOLTAGE);
+	}
 
 	return rc;
 }
@@ -1408,6 +1416,7 @@ static int __devinit qpnp_regulator_probe(struct spmi_device *spmi)
 	if (!vreg) {
 		dev_err(&spmi->dev, "%s: Can't allocate qpnp_regulator\n",
 			__func__);
+		BBOX_REGULATOR_PROBE_FAIL;
 		return -ENOMEM;
 	}
 
@@ -1421,6 +1430,7 @@ static int __devinit qpnp_regulator_probe(struct spmi_device *spmi)
 			dev_err(&spmi->dev, "%s: unable to allocate memory\n",
 					__func__);
 			kfree(vreg);
+			BBOX_REGULATOR_PROBE_FAIL;
 			return -ENOMEM;
 		}
 		memset(&of_pdata, 0,
@@ -1436,6 +1446,7 @@ static int __devinit qpnp_regulator_probe(struct spmi_device *spmi)
 			dev_err(&spmi->dev, "%s: DT parsing failed, rc=%d\n",
 					__func__, rc);
 			kfree(vreg);
+			BBOX_REGULATOR_PROBE_FAIL;
 			return -ENOMEM;
 		}
 
@@ -1478,6 +1489,7 @@ static int __devinit qpnp_regulator_probe(struct spmi_device *spmi)
 		dev_err(&spmi->dev, "%s: Can't allocate regulator name\n",
 			__func__);
 		kfree(vreg);
+		BBOX_REGULATOR_PROBE_FAIL;
 		return -ENOMEM;
 	}
 	strlcpy(reg_name, pdata->init_data.constraints.name,
@@ -1554,6 +1566,7 @@ bail:
 
 	kfree(vreg->rdesc.name);
 	kfree(vreg);
+	BBOX_REGULATOR_PROBE_FAIL;
 
 	return rc;
 }

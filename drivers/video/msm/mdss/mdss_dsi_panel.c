@@ -21,13 +21,22 @@
 #include <linux/leds.h>
 #include <linux/qpnp/pwm.h>
 #include <linux/err.h>
+#include <linux/jiffies.h>
+#include <linux/platform_data/lm3630_bl.h>
+#include <linux/platform_data/rt4501_bl.h>
+#include <linux/proc_fs.h>
+#include <linux/uaccess.h>
 
 #include "mdss_dsi.h"
 
 #define DT_CMD_HDR 6
+/* Add for set back-light level boundary */
+#define PWM_MIN 1
+#define PWM_MAX 255
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
+struct mdss_panel_data *g_pdata;
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	ctrl->pwm_bl = pwm_request(ctrl->pwm_lpg_chan, "lcd-bklt");
@@ -94,7 +103,7 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 		pr_err("%s: pwm_enable() failed err=%d\n", __func__, ret);
 	ctrl->pwm_enabled = 1;
 }
-
+#if 0
 static char dcs_cmd[2] = {0x54, 0x00}; /* DTYPE_DCS_READ */
 static struct dsi_cmd_desc dcs_read_cmd = {
 	{DTYPE_DCS_READ, 1, 0, 1, 5, sizeof(dcs_cmd)},
@@ -122,6 +131,54 @@ u32 mdss_dsi_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl, char cmd0,
 
 	return 0;
 }
+#else
+static char dcs_cmd[1] = {0x0A};
+static struct dsi_cmd_desc dcs_read_cmd = {
+	{DTYPE_DCS_READ, 1, 0, 1, 5, sizeof(dcs_cmd)},
+	dcs_cmd
+};
+
+#define rbuf_size 16
+u32 mdss_dsi_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl)
+{
+	struct dcs_cmd_req cmdreq;
+	char *rbuf;
+	u32 ret;
+
+	rbuf = kmalloc(rbuf_size, GFP_KERNEL);
+	if (!rbuf)
+		return 0;
+
+	memset(&cmdreq, 0, sizeof(cmdreq));
+	cmdreq.cmds = &dcs_read_cmd;
+	cmdreq.cmds_cnt = 1;
+	cmdreq.flags = CMD_REQ_RX | CMD_REQ_COMMIT;
+	cmdreq.rlen = rbuf_size;
+	cmdreq.rbuf = rbuf;
+	cmdreq.cb = NULL; /* call back */
+	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
+	/*
+	 * blocked here, until call back called
+	 */
+	pr_info("%s: Read [0x%02X] : 0x%02X\n", __func__, dcs_cmd[0], cmdreq.rbuf[0]);
+
+	ret = cmdreq.rbuf[0];
+	kfree(rbuf);
+
+	return ret;
+}
+
+int mdss_panel_power_status(void) {
+	int ret = 0;
+	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+
+	ctrl = container_of(g_pdata, struct mdss_dsi_ctrl_pdata, panel_data);
+	ret = mdss_dsi_panel_cmd_read(ctrl);
+
+	return ret;
+}
+EXPORT_SYMBOL(mdss_panel_power_status);
+#endif
 
 static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_panel_cmds *pcmds)
@@ -149,7 +206,7 @@ static struct dsi_cmd_desc backlight_cmd = {
 	led_pwm1
 };
 
-static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
+void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 {
 	struct dcs_cmd_req cmdreq;
 
@@ -180,12 +237,34 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 			goto disp_en_gpio_err;
 		}
 	}
+#if 0
+	if (gpio_is_valid(ctrl_pdata->disp_bias_en_n_gpio)) {
+		rc = gpio_request(ctrl_pdata->disp_bias_en_n_gpio, "disp_bias_en_n");
+		if (rc) {
+			printk("BBox::UEC; 0::1\n");
+			printk("BBox; %s: request disp_bias_en_n gpio failed, rc=%d\n", __func__, rc);
+			goto disp_bias_en_n_err;
+		}
+	}
+
+	if (gpio_is_valid(ctrl_pdata->disp_bias_en_p_gpio)) {
+		rc = gpio_request(ctrl_pdata->disp_bias_en_p_gpio, "disp_bias_en_p");
+		if (rc) {
+			printk("BBox::UEC; 0::1\n");
+			printk("BBox; %s: request disp_bias_en_p gpio failed, rc=%d\n", __func__, rc);
+			goto disp_bias_en_p_err;
+		}
+	}
+#endif
+	if (gpio_is_valid(ctrl_pdata->rst_gpio)) {
 	rc = gpio_request(ctrl_pdata->rst_gpio, "disp_rst_n");
 	if (rc) {
 		pr_err("request reset gpio failed, rc=%d\n",
 			rc);
 		goto rst_gpio_err;
 	}
+	}
+
 	if (gpio_is_valid(ctrl_pdata->mode_gpio)) {
 		rc = gpio_request(ctrl_pdata->mode_gpio, "panel_mode");
 		if (rc) {
@@ -197,8 +276,17 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	return rc;
 
 mode_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->rst_gpio))
 	gpio_free(ctrl_pdata->rst_gpio);
 rst_gpio_err:
+#if 0
+	if (gpio_is_valid(ctrl_pdata->disp_bias_en_p_gpio))
+		gpio_free(ctrl_pdata->disp_bias_en_p_gpio);
+disp_bias_en_p_err:
+	if (gpio_is_valid(ctrl_pdata->disp_bias_en_n_gpio))
+		gpio_free(ctrl_pdata->disp_bias_en_n_gpio);
+disp_bias_en_n_err:
+#endif
 	if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 		gpio_free(ctrl_pdata->disp_en_gpio);
 disp_en_gpio_err:
@@ -243,11 +331,23 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 				gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
 
+			mdelay(6);
+
+			if (gpio_is_valid(ctrl_pdata->disp_bias_en_p_gpio))
+				gpio_set_value((ctrl_pdata->disp_bias_en_p_gpio), 1);
+
+			if (gpio_is_valid(ctrl_pdata->disp_bias_en_n_gpio))
+				gpio_set_value((ctrl_pdata->disp_bias_en_n_gpio), 1);
+
 			for (i = 0; i < pdata->panel_info.rst_seq_len; ++i) {
 				gpio_set_value((ctrl_pdata->rst_gpio),
 					pdata->panel_info.rst_seq[i]);
 				if (pdata->panel_info.rst_seq[++i])
+#if 0
 					usleep(pinfo->rst_seq[i] * 1000);
+#else
+					mdelay(pinfo->rst_seq[i]);
+#endif
 			}
 		}
 
@@ -264,12 +364,31 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			pr_debug("%s: Reset panel done\n", __func__);
 		}
 	} else {
+
+		if (gpio_is_valid(ctrl_pdata->rst_gpio)) {
+			gpio_set_value((ctrl_pdata->rst_gpio), 0);
+			gpio_free(ctrl_pdata->rst_gpio);
+		}
+
+		mdelay(4);
+
+		if (gpio_is_valid(ctrl_pdata->disp_bias_en_n_gpio)) {
+			gpio_set_value((ctrl_pdata->disp_bias_en_n_gpio), 0);
+			//gpio_free(ctrl_pdata->disp_bias_en_n_gpio);
+		}
+
+		if (gpio_is_valid(ctrl_pdata->disp_bias_en_p_gpio)) {
+			gpio_set_value((ctrl_pdata->disp_bias_en_p_gpio), 0);
+			//gpio_free(ctrl_pdata->disp_bias_en_p_gpio);
+		}
+
+		mdelay(6);
+
 		if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
 			gpio_free(ctrl_pdata->disp_en_gpio);
 		}
-		gpio_set_value((ctrl_pdata->rst_gpio), 0);
-		gpio_free(ctrl_pdata->rst_gpio);
+
 		if (gpio_is_valid(ctrl_pdata->mode_gpio))
 			gpio_free(ctrl_pdata->mode_gpio);
 	}
@@ -403,6 +522,32 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 			mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
 		}
 		break;
+	case BL_I2C_LM3630:
+		if (bl_level < 0)
+			bl_level = 0;
+		else if ((bl_level > 0) && (bl_level < PWM_MIN))
+			bl_level = PWM_MIN;
+		else if (bl_level > PWM_MAX)
+			bl_level = PWM_MAX;
+
+		if (bl_level == 0)
+			lm3630_lcd_backlight_set_level(bl_level, 0);
+		else
+			lm3630_lcd_backlight_set_level(bl_level, 1);
+		break;
+	case BL_I2C_RT4501:
+		if (bl_level < 0)
+			bl_level = 0;
+		else if ((bl_level > 0) && (bl_level < PWM_MIN))
+			bl_level = PWM_MIN;
+		else if (bl_level > PWM_MAX)
+			bl_level = PWM_MAX;
+
+		if (bl_level == 0)
+			rt4501_set_backlight_level(0, bl_level, ctrl_pdata);
+		else
+			rt4501_set_backlight_level(1, bl_level, ctrl_pdata);
+		break;
 	default:
 		pr_err("%s: Unknown bl_ctrl configuration\n",
 			__func__);
@@ -410,7 +555,100 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	}
 }
 
-static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+static int mdss_dsi_panel_cabc(struct mdss_panel_data *pdata)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+#ifndef CONFIG_FB_MSM_MDSS_COLOR_MODE
+	pdata->color_mode_on = 0;
+#endif
+
+	if (ctrl->color_mode_cmds.cmd_cnt) {
+		ctrl->color_mode_cmds.cmds->payload[1] = pdata->color_mode_on ? (pdata->color_mode | pdata->cabc_setting) : pdata->cabc_setting;
+
+		if (pdata->cabc_token) {
+			pdata->cabc_token = 0;
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_mode_cmds);
+			pdata->cabc_token = 1;
+		}
+		else
+			pr_err("%s: Panel already off!\n", __func__);
+	}
+
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+static int mdss_dsi_panel_color_temperature(struct mdss_panel_data *pdata)
+{
+	struct mipi_panel_info *mipi;
+	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+	u32 data;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+	mipi  = &pdata->panel_info.mipi;
+
+	/* Qualcomm case #01472971, [MO7] Send mipi command will make system hang. */
+	data = MIPI_INP((ctrl->ctrl_base) + 0x0110);
+	data |= DSI_INTR_CMD_DMA_DONE_MASK;
+	MIPI_OUTP((ctrl->ctrl_base) + 0x0110, data);
+
+	pr_info("[DISPLAY] %s: color temperature = %s\n", __func__, pdata->color_temperature);
+
+	if ((ctrl->color_pre_cmds.cmd_cnt)&&
+		(ctrl->color_warm_cmds.cmd_cnt)&&
+		(ctrl->color_normal_cmds.cmd_cnt)&&
+		(ctrl->color_cold_cmds.cmd_cnt)&&
+		(ctrl->color_gamma_1_cmds.cmd_cnt)&&
+		(ctrl->color_gamma_2_cmds.cmd_cnt)&&
+		(ctrl->color_gamma_3_cmds.cmd_cnt)&&
+		(ctrl->color_gamma_4_cmds.cmd_cnt)&&
+		(ctrl->color_mode_pre_cmds.cmd_cnt)) {
+
+		/* ready to send color temperature command */
+		mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_pre_cmds);
+
+		if(!strncmp(pdata->color_temperature, "5500", 4))
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_warm_cmds);
+		else if (!strncmp(pdata->color_temperature, "7500", 4))
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_cold_cmds);
+		else if (!strncmp(pdata->color_temperature, "10", 2))
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_gamma_1_cmds);
+		else if (!strncmp(pdata->color_temperature, "30", 2))
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_gamma_2_cmds);
+		else if (!strncmp(pdata->color_temperature, "50", 2))
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_gamma_3_cmds);
+		else if (!strncmp(pdata->color_temperature, "75", 2))
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_gamma_4_cmds);
+		else
+			mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_normal_cmds);
+
+		mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_mode_pre_cmds);
+	}
+
+	pr_debug("[DISPLAY] %s:-\n", __func__);
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+static int mdss_dsi_panel_color_mode(struct mdss_panel_data *pdata)
 {
 	struct mipi_panel_info *mipi;
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
@@ -424,10 +662,75 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 				panel_data);
 	mipi  = &pdata->panel_info.mipi;
 
+	pr_info("[DISPLAY] %s: color mode = 0x%02X, enable = %d\n", __func__, pdata->color_mode, pdata->color_mode_on);
+
+#ifndef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	pdata->cabc_setting = 0;
+#endif
+
+	if (ctrl->color_mode_cmds.cmd_cnt) {
+		ctrl->color_mode_cmds.cmds->payload[1] = pdata->color_mode_on ? pdata->color_mode : 0x00;
+		mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_mode_cmds);
+        }
+
+	pr_debug("%s:-\n", __func__);
+	return 0;
+}
+#endif
+
+
+static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
+{
+	struct mipi_panel_info *mipi;
+	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+#ifdef CONFIG_FB_MSM_MDSS_NO_OTP
+	static unsigned long sending_timer = 0;
+#endif
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+	mipi  = &pdata->panel_info.mipi;
+
 	pr_debug("%s: ctrl=%p ndx=%d\n", __func__, ctrl, ctrl->ndx);
 
-	if (ctrl->on_cmds.cmd_cnt)
+	if (ctrl->on_pre_cmds.cmd_cnt) {
+#ifdef CONFIG_FB_MSM_MDSS_NO_OTP
+		sending_timer = jiffies + (HZ/10);
+#endif
+		mdss_dsi_panel_cmds_send(ctrl, &ctrl->on_pre_cmds);
+	}
+
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	pdata->cabc_setting = 0;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	mdss_dsi_panel_color_temperature(pdata);
+#endif
+
+        if (ctrl->setting_cmds.cmd_cnt)
+                mdss_dsi_panel_cmds_send(ctrl, &ctrl->setting_cmds);
+
+	if (ctrl->on_cmds.cmd_cnt) {
+#ifdef CONFIG_FB_MSM_MDSS_NO_OTP
+		/* make sure lcm on command will be sent after sleep out command + 100ms */
+		while (time_before(jiffies, sending_timer)) {
+                }
+#endif
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->on_cmds);
+	}
+
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+	if ((ctrl->color_mode_cmds.cmd_cnt)&&(ctrl->color_mode_pre_cmds.cmd_cnt)) {
+		mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_mode_pre_cmds);
+
+		ctrl->color_mode_cmds.cmds->payload[1] = pdata->color_mode_on ? pdata->color_mode : 0x00;
+		mdss_dsi_panel_cmds_send(ctrl, &ctrl->color_mode_cmds);
+	}
+#endif
 
 	pr_debug("%s:-\n", __func__);
 	return 0;
@@ -1001,6 +1304,10 @@ static int mdss_panel_parse_dt(struct device_node *np,
 			ctrl_pdata->pwm_pmic_gpio = tmp;
 		} else if (!strncmp(data, "bl_ctrl_dcs", 11)) {
 			ctrl_pdata->bklt_ctrl = BL_DCS_CMD;
+		} else if (!strncmp(data, "bl_i2c_lm3630", 13)) {
+			ctrl_pdata->bklt_ctrl = BL_I2C_LM3630;
+		} else if (!strncmp(data, "bl_i2c_rt4501", 13)) {
+			ctrl_pdata->bklt_ctrl = BL_I2C_RT4501;
 		}
 	}
 	rc = of_property_read_u32(np, "qcom,mdss-brightness-max-level", &tmp);
@@ -1140,6 +1447,12 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		"qcom,mdss-dsi-reset-sequence");
 	mdss_panel_parse_te_params(np, pinfo);
 
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->on_pre_cmds,
+		"qcom,mdss-dsi-on-pre-command", "qcom,mdss-dsi-on-command-state");
+
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->setting_cmds,
+		"qcom,mdss-dsi-setting-command", "qcom,mdss-dsi-on-command-state");
+
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->on_cmds,
 		"qcom,mdss-dsi-on-command", "qcom,mdss-dsi-on-command-state");
 
@@ -1151,6 +1464,36 @@ static int mdss_panel_parse_dt(struct device_node *np,
 				"qcom,mdss-dsi-panel-status-command-state");
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-panel-status-value", &tmp);
 	ctrl_pdata->status_value = (!rc ? tmp : 0);
+
+#if (defined(CONFIG_FB_MSM_MDSS_CABC_CONTROL)) || (defined(CONFIG_FB_MSM_MDSS_COLOR_MODE))
+	/* To parse cabc & color enhance mipi command */
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_mode_pre_cmds,
+		"fih,mdss-dsi-ie-pre-command", "fih,mdss-dsi-color-command-state");
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_mode_cmds,
+		"fih,mdss-dsi-ie-on-command", "fih,mdss-dsi-color-command-state");
+	rc = of_property_read_u32(np, "fih,mdss-dsi-ie-mode", &tmp);
+	ctrl_pdata->panel_data.color_mode  = (!rc ? tmp : 0x80);
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	/* To parse color temperature */
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_pre_cmds,
+		"fih,mdss-dsi-color-pre-command", "fih,mdss-dsi-color-command-state");
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_warm_cmds,
+		"fih,mdss-dsi-color-warm-command", "fih,mdss-dsi-color-command-state");
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_normal_cmds,
+		"fih,mdss-dsi-color-normal-command", "fih,mdss-dsi-color-command-state");
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_cold_cmds,
+		"fih,mdss-dsi-color-cold-command", "fih,mdss-dsi-color-command-state");
+
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_gamma_1_cmds,
+		"fih,mdss-dsi-color-gamma-1-command", "fih,mdss-dsi-color-command-state");
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_gamma_2_cmds,
+		"fih,mdss-dsi-color-gamma-2-command", "fih,mdss-dsi-color-command-state");
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_gamma_3_cmds,
+		"fih,mdss-dsi-color-gamma-3-command", "fih,mdss-dsi-color-command-state");
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->color_gamma_4_cmds,
+		"fih,mdss-dsi-color-gamma-4-command", "fih,mdss-dsi-color-command-state");
+#endif
 
 
 	ctrl_pdata->status_mode = ESD_MAX;
@@ -1169,10 +1512,246 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		goto error;
 	}
 
+	/* read LCD bias for +5v */
+	ctrl_pdata->disp_bias_en_p_gpio = of_get_named_gpio(np,
+		"qcom,mdss-dsi-bias-p-en-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->disp_bias_en_p_gpio)) {
+		pr_err("%s:%d, qcom,mdss-dsi-bias-p-en-gpio not specified\n",
+						__func__, __LINE__);
+	}
+
+	/* read LCD bias for -5v */
+	ctrl_pdata->disp_bias_en_n_gpio = of_get_named_gpio(np,
+		"qcom,mdss-dsi-bias-n-en-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->disp_bias_en_n_gpio)) {
+		pr_err("%s:%d, qcom,mdss-dsi-bias-n-en-gpio not specified\n",
+						__func__, __LINE__);
+	}
+
 	return 0;
 
 error:
 	return -EINVAL;
+}
+
+static int proc_calc_metrics(char *page, char **start, off_t off, int count,
+		int *eof, int len)
+{
+	if (len <= off+count) *eof = 1;
+	*start = page + off;
+	len -= off;
+	if (len>count) len = count;
+	if (len<0) len = 0;
+	return len;
+}
+
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+static int lcm0_cabc_write(struct file *file, const char *buffer, unsigned long count,
+		void *data)
+{
+	int cmd = 0, ret = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	if (sscanf(buffer, "%d", &cmd) <= 0) {
+		pr_err("%s: get user-space data failed\n", __func__);
+		return -EINVAL;
+	}
+
+	pdata->cabc_setting = cmd;
+
+	if (!pdata->panel_info.panel_power_on)
+	      return count;
+
+	if ((!pdata) || (!pdata->set_cabc)) {
+	      pr_err("%s: function not support\n", __func__);
+	      return -ENODEV;
+	}
+
+	ret = pdata->set_cabc(pdata);
+	if (ret) {
+		pr_err("%s: send mipi command fail\n", __func__);
+	}
+
+	return count;
+}
+
+static int lcm0_cabc_read(char *page, char **start, off_t off,
+		int count, int *eof, void *data)
+{
+	int len = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	len = snprintf(page, PAGE_SIZE, "%d\n", pdata->cabc_setting);
+
+	return proc_calc_metrics(page, start, off, count, eof, len);
+}
+#endif
+
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+static int lcm0_mode_write(struct file *file, const char *buffer, unsigned long count,
+		void *data)
+{
+	int cmd = 0, ret = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	if (sscanf(buffer, "%d", &cmd) <= 0) {
+		pr_err("%s: get user-space data failed\n", __func__);
+		return -EINVAL;
+	}
+
+	pdata->color_mode_on = cmd;
+
+	if (!pdata->panel_info.panel_power_on)
+		return count;
+
+	if ((!pdata) || (!pdata->set_color_mode)) {
+		pr_err("%s: function not support\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = pdata->set_color_mode(pdata);
+	if (ret) {
+		pr_err("%s: send mipi command fail\n", __func__);
+	}
+
+	return count;
+}
+
+static int lcm0_mode_read(char *page, char **start, off_t off,
+		int count, int *eof, void *data)
+{
+	int len = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	len = snprintf(page, PAGE_SIZE, "%d\n", pdata->color_mode_on);
+
+	return proc_calc_metrics(page, start, off, count, eof, len);
+}
+#endif
+
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+static int lcm0_temperature_write(struct file *file, const char *buffer, unsigned long count,
+		void *data)
+{
+	int ret = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	memset(pdata->color_temperature, '\0', sizeof(pdata->color_temperature));
+	strncpy(pdata->color_temperature, buffer, 4);
+
+	if (!pdata->panel_info.panel_power_on)
+		return count;
+
+	if ((!pdata) || (!pdata->set_color_temperature)) {
+		pr_err("%s: function not support\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = pdata->set_color_temperature(pdata);
+	if (ret) {
+		pr_err("%s: send mipi command fail\n", __func__);
+	}
+
+	return count;
+}
+
+static int lcm0_temperature_read(char *page, char **start, off_t off,
+		int count, int *eof, void *data)
+{
+	int len = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	len = snprintf(page, PAGE_SIZE, "%s\n", pdata->color_temperature);
+
+	return proc_calc_metrics(page, start, off, count, eof, len);
+}
+#endif
+
+static int lcm0_mipi_reg_write(struct file *file, const char *buffer, unsigned long count,
+		void *data)
+{
+	int cmd = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	if (sscanf(buffer, "%d", &cmd) <= 0) {
+		pr_err("%s: get user-space data failed\n", __func__);
+		return -EINVAL;
+	}
+
+	dcs_cmd[0] = (char)cmd;
+
+	pr_info("%s get [cmd = %d], [dcs_cmd = 0x%02X]", __func__, cmd, dcs_cmd[0]);
+
+	if (!pdata->panel_info.panel_power_on)
+		return count;
+
+	pdata->mipi_reg = mdss_panel_power_status();
+
+	return count;
+}
+
+static int lcm0_mipi_reg_read(char *page, char **start, off_t off,
+		int count, int *eof, void *data)
+{
+	int len = 0;
+	struct mdss_panel_data *pdata = g_pdata;
+
+	len = snprintf(page, PAGE_SIZE, "0x%02X\n", pdata->mipi_reg);
+
+	return proc_calc_metrics(page, start, off, count, eof, len);
+}
+
+static int lcm_proc_init(void)
+{
+	struct proc_dir_entry *lcm0_list;
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	struct proc_dir_entry *lcm0_temperature;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+	struct proc_dir_entry *lcm0_mode;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	struct proc_dir_entry *lcm0_cabc;
+#endif
+	struct proc_dir_entry *lcm0_mipi;
+
+	/* Add for LCM0 information */
+	lcm0_list = proc_mkdir("AllHWList/LCM0", NULL);
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	/* color temperature */
+	lcm0_temperature = create_proc_entry("color_temperature", 0664, lcm0_list);
+	if (lcm0_list == NULL) {
+		pr_err("%s: Fail to create %s\n", __func__, "AllHWList/LCM0/color_temperature");
+	}
+	lcm0_temperature->read_proc = lcm0_temperature_read;
+	lcm0_temperature->write_proc = lcm0_temperature_write;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+	/* color mode */
+	lcm0_mode = create_proc_entry("color_mode", 0664, lcm0_list);
+	if (lcm0_list == NULL) {
+		pr_err("%s: Fail to create %s\n", __func__, "AllHWList/LCM0/color_mode");
+	}
+	lcm0_mode->read_proc = lcm0_mode_read;
+	lcm0_mode->write_proc = lcm0_mode_write;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	/* CABC */
+	lcm0_cabc = create_proc_entry("CABC_settings", 0664, lcm0_list);
+	if (lcm0_list == NULL) {
+		pr_err("%s: Fail to create %s\n", __func__, "AllHWList/LCM0/CABC_settings");
+	}
+	lcm0_cabc->read_proc = lcm0_cabc_read;
+	lcm0_cabc->write_proc = lcm0_cabc_write;
+#endif
+	/* MIPI reg read */
+	lcm0_mipi = create_proc_entry("mipi_reg", 0664, lcm0_list);
+	if (lcm0_list == NULL) {
+		pr_err("%s: Fail to create %s\n", __func__, "AllHWList/LCM0/mipi_reg");
+	}
+	lcm0_mipi->read_proc = lcm0_mipi_reg_read;
+	lcm0_mipi->write_proc = lcm0_mipi_reg_write;
+	return 0;
 }
 
 int mdss_dsi_panel_init(struct device_node *node,
@@ -1214,8 +1793,26 @@ int mdss_dsi_panel_init(struct device_node *node,
 
 	ctrl_pdata->on = mdss_dsi_panel_on;
 	ctrl_pdata->off = mdss_dsi_panel_off;
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	ctrl_pdata->panel_data.set_cabc = mdss_dsi_panel_cabc;
+	/* initialize the cabc_token as 1 */
+	ctrl_pdata->panel_data.cabc_token = 1;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	ctrl_pdata->panel_data.set_color_temperature = mdss_dsi_panel_color_temperature;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+	ctrl_pdata->panel_data.set_color_mode = mdss_dsi_panel_color_mode;
+#endif
 	ctrl_pdata->panel_data.set_backlight = mdss_dsi_panel_bl_ctrl;
 	ctrl_pdata->switch_mode = mdss_dsi_panel_switch_mode;
+
+	g_pdata = &ctrl_pdata->panel_data;
+	rc = lcm_proc_init();
+	if (rc) {
+		pr_err("%s:%d lcm proc init failed\n", __func__, __LINE__);
+		return rc;
+	}
 
 	return 0;
 }

@@ -1,0 +1,45 @@
+
+Two files are added to device tree for sound:
+ - Audio_alsa_[HW ver].dsti
+ - Audio_headset_[HW ver].dsti
+
+    [HW ver] is the PCB hardware version, could be "evb" ...
+
+Optional properties:
+ - qcom,audio-routing: one new widget for headphone amplifier is defined:
+			"Headphone amp". Please include the route if device has headphone
+			amplifier.
+ - qcom,top-spk-pamp-gpio: GPIO of top speaker amplifier enable pin
+ - qcom,bottom-spk-pamp-gpio: GPIO of bottom speaker amplifier enable pin
+ - qcom,hph-pamp-gpio: GPIO of headset amplifier enable pin. Be sure to
+			add DAPM route also.
+ - qcom,top-spk-select-gpio: GPIO of receiver/top speaker select pin. For
+			those devices whose receiver and top speaker share same amplifier,
+			please define this pin.
+
+Example:
+&soc {
+	sound {
+		qcom,model = "msm8974-taiko-liquid-snd-card";
+
+		qcom,audio-routing =
+			"RX_BIAS", "MCLK",
+			"LDO_H", "MCLK",
+			"Lineout_1 amp", "LINEOUT1",
+			"Lineout_3 amp", "LINEOUT3",
+			"Lineout_2 amp", "LINEOUT2",
+			"Lineout_4 amp", "LINEOUT4",
+			"Headphone amp", "HEADPHONE",
+			"AMIC2", "MIC BIAS2 External",
+			"MIC BIAS2 External", "Headset Mic",
+			"DMIC1", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Digital Mic1",
+			"DMIC3", "MIC BIAS3 External",
+			"MIC BIAS3 External", "Digital Mic3";
+
+		qcom,top-spk-pamp-gpio = <&msmgpio 8 0>;
+		qcom,top-spk-select-gpio = <&msmgpio 11 0>;
+		qcom,bottom-spk-pamp-gpio = <&msmgpio 9 0>;
+		qcom,hph-pamp-gpio = <&pm8941_gpios 9 0>;
+	};
+};

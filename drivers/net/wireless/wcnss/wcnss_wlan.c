@@ -942,8 +942,10 @@ void wcnss_reset_intr(void)
 {
 	if (wcnss_hardware_type() == WCNSS_PRONTO_HW) {
 		wcnss_pronto_log_debug_regs();
+#ifdef CONFIG_WCNSS_REGISTER_DUMP_ON_BITE
 		if (wcnss_get_mux_control())
 			wcnss_log_iris_regs();
+#endif
 		wmb();
 		__raw_writel(1 << 16, penv->fiq_reg);
 	} else {
@@ -1132,6 +1134,7 @@ wcnss_gpios_config(struct resource *gpios_5wire, bool enable)
 		if (enable) {
 			rc = gpio_request(i, gpios_5wire->name);
 			if (rc) {
+				pr_info("BBox; %s: WCNSS gpio_request %d err %d\n",__func__, i, rc);
 				pr_err("WCNSS gpio_request %d err %d\n", i, rc);
 				goto fail;
 			}
@@ -1211,6 +1214,7 @@ wcnss_ctrl_probe(struct platform_device *pdev)
 	ret = smd_named_open_on_edge(WCNSS_CTRL_CHANNEL, SMD_APPS_WCNSS,
 			&penv->smd_ch, penv, wcnss_smd_notify_event);
 	if (ret < 0) {
+		pr_info("BBox; %s: wcnss: cannot open the smd command channel %s: %d\n",__func__, WCNSS_CTRL_CHANNEL, ret);
 		pr_err("wcnss: cannot open the smd command channel %s: %d\n",
 				WCNSS_CTRL_CHANNEL, ret);
 		return -ENODEV;
@@ -1666,6 +1670,7 @@ static unsigned char wcnss_fw_status(void)
 
 	len = smd_read_avail(penv->smd_ch);
 	if (len < 1) {
+		pr_info("BBox; %s: invalid firmware status\n",__func__);
 		pr_err("%s: invalid firmware status", __func__);
 		return fw_status;
 	}
@@ -1686,6 +1691,7 @@ static void wcnss_send_cal_rsp(unsigned char fw_status)
 
 	msg = kmalloc((sizeof(struct smd_msg_hdr) + 1), GFP_KERNEL);
 	if (NULL == msg) {
+		pr_info("BBox; wcnss: %s: failed to get memory\n",__func__);
 		pr_err("wcnss: %s: failed to get memory\n", __func__);
 		return;
 	}
@@ -2007,8 +2013,9 @@ static void wcnss_nvbin_dnld(void)
 	ret = request_firmware(&nv, NVBIN_FILE, dev);
 
 	if (ret || !nv || !nv->data || !nv->size) {
-		pr_err("wcnss: %s: request_firmware failed for %s(ret = %d)\n",
-			__func__, NVBIN_FILE, ret);
+		pr_info("BBox; %s: request_firmware failed for %s\n",__func__, NVBIN_FILE);
+		pr_err("wcnss: %s: request_firmware failed for %s\n",
+			__func__, NVBIN_FILE);
 		goto out;
 	}
 
@@ -2402,6 +2409,7 @@ wcnss_trigger_config(struct platform_device *pdev)
 		ret = wcnss_pronto_gpios_config(&pdev->dev, true);
 
 	if (ret) {
+		pr_info("BBox; %s: WCNSS gpios config failed. ret=%d\n",__func__, ret);
 		dev_err(&pdev->dev, "WCNSS gpios config failed.\n");
 		goto fail_gpio_res;
 	}
@@ -2411,6 +2419,8 @@ wcnss_trigger_config(struct platform_device *pdev)
 					WCNSS_WLAN_SWITCH_ON,
 					&penv->iris_xo_mode_set);
 	if (ret) {
+		pr_info("BBox::UEC; 13::0\n");
+		pr_info("BBox; %s: WCNSS Power-up failed. ret=%d\n",__func__, ret);
 		dev_err(&pdev->dev, "WCNSS Power-up failed.\n");
 		goto fail_power;
 	}
@@ -2884,6 +2894,7 @@ static int __init wcnss_wlan_init(void)
 #ifdef CONFIG_WCNSS_MEM_PRE_ALLOC
 	ret = wcnss_prealloc_init();
 	if (ret < 0)
+		pr_info("BBox; %s: wcnss: pre-allocation failed. ret=%d\n",__func__, ret);
 		pr_err("wcnss: pre-allocation failed\n");
 #endif
 

@@ -27,6 +27,12 @@ config MMC_PERF_PROFILING
 	  If you say Y here, support will be added for collecting
 	  performance numbers at the MMC Queue and Host layers.
 
+config MMC_FIH_SKIP_EMMC_V4P5
+	bool "MMC skip support v4.5"
+	depends on MMC != n
+	help
+	  Disable support emmc v4.5
+
 if MMC
 
 source "drivers/mmc/core/Kconfig"

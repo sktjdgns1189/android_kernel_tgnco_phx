@@ -37,6 +37,15 @@ struct qpnp_local_int {
 };
 
 #ifdef CONFIG_MSM_QPNP_INT
+//KashKHYang add for PowerMonitor to get irq name, 2014/03/13 {
+#define FIH_POWERLOG
+#ifdef FIH_POWERLOG
+const char* get_last_irq_name(void);
+void set_last_irq(int irq);
+int get_last_irq(void);
+#endif
+//KashKHYang add for PowerMonitor to get irq name, 2014/03/13 }
+
 /**
  * qpnpint_of_init() - Device Tree irq initialization
  *

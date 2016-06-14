@@ -35,6 +35,7 @@
 
 #include "gadget_chips.h"
 
+
 /*
  * Kbuild is not very cooperative with respect to linking separately
  * compiled library objects into one module.  So for now we won't use
@@ -1779,9 +1780,14 @@ static int mass_storage_function_init(struct android_usb_function *f,
 	if (!config)
 		return -ENOMEM;
 
-	config->fsg.nluns = 1;
-	snprintf(name[0], MAX_LUN_NAME, "lun");
-	config->fsg.luns[0].removable = 1;
+	config->fsg.nluns = 2;
+	snprintf(name[0], MAX_LUN_NAME, "lun0");
+	config->fsg.luns[0].removable = 0;
+	config->fsg.luns[0].cdrom = 1;
+	config->fsg.luns[0].ro = 1;
+	snprintf(name[1], MAX_LUN_NAME, "lun1");
+	config->fsg.luns[1].removable = 1;
+	config->fsg.luns[1].cdrom = 0;
 
 	if (dev->pdata && dev->pdata->cdrom) {
 		config->fsg.luns[config->fsg.nluns].cdrom = 1;
@@ -1873,8 +1879,27 @@ static DEVICE_ATTR(inquiry_string, S_IRUGO | S_IWUSR,
 					mass_storage_inquiry_show,
 					mass_storage_inquiry_store);
 
+static ssize_t mass_storage_fih_ums_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", g_fih_ums);
+}
+
+static ssize_t mass_storage_fih_ums_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	sscanf(buf, "%d", &g_fih_ums);
+	pr_debug("%s: %d\n", __func__, g_fih_ums);
+	return size;
+}
+
+static DEVICE_ATTR(fih_ums, S_IRUGO | S_IWUSR,
+					mass_storage_fih_ums_show,
+					mass_storage_fih_ums_store);
+
 static struct device_attribute *mass_storage_function_attributes[] = {
 	&dev_attr_inquiry_string,
+	&dev_attr_fih_ums,
 	NULL
 };
 
@@ -3148,6 +3173,7 @@ static int __init init(void)
 {
 	int ret;
 
+
 	/* Override composite driver functions */
 	composite_driver.setup = android_setup;
 	composite_driver.disconnect = android_disconnect;
@@ -3172,3 +3198,4 @@ static void __exit cleanup(void)
 	platform_driver_unregister(&android_platform_driver);
 }
 module_exit(cleanup);
+

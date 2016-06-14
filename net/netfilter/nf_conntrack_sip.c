@@ -1467,8 +1467,16 @@ static int sip_help_tcp(struct sk_buff *skb, unsigned int protoff,
 		end += strlen("\r\n\r\n") + clen;
 
 		msglen = origlen = end - dptr;
+
+		//ChungweiCheng@FIHTDC modify for PHXL-5994 SIP drop large segment, 2015/3/31 {
+		/* 
 		if (msglen > datalen)
 			return NF_DROP;
+		*/
+		if (msglen > datalen){
+			return NF_ACCEPT;
+		}
+		//ChungweiCheng@FIHTDC modify for PHXL-5994 SIP drop large segment, 2015/3/31 }
 
 		ret = process_sip_msg(skb, ct, dataoff, &dptr, &msglen);
 		if (ret != NF_ACCEPT)

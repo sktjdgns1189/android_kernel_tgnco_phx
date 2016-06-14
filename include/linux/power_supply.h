@@ -156,6 +156,12 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_USB_CDP,	/* Charging Downstream Port */
 	POWER_SUPPLY_TYPE_USB_ACA,	/* Accessory Charger Adapters */
 	POWER_SUPPLY_TYPE_BMS,		/* Battery Monitor System */
+#ifdef CONFIG_BQ5101X_CHARGER
+	POWER_SUPPLY_TYPE_WIRELESS,	/* Wireless Charger */
+#endif
+#ifdef CONFIG_BQ2419X_CHARGER
+	POWER_SUPPLY_TYPE_OTG,		/* OTG TYPE for BQ2419X */
+#endif
 };
 
 union power_supply_propval {
@@ -233,6 +239,7 @@ extern int power_supply_am_i_supplied(struct power_supply *psy);
 extern int power_supply_set_battery_charged(struct power_supply *psy);
 extern int power_supply_set_current_limit(struct power_supply *psy, int limit);
 extern int power_supply_set_voltage_limit(struct power_supply *psy, int limit);
+extern int power_supply_set_charging_enabled(struct power_supply *psy, bool enable);
 extern int power_supply_set_online(struct power_supply *psy, bool enable);
 extern int power_supply_set_health_state(struct power_supply *psy, int health);
 extern int power_supply_set_present(struct power_supply *psy, bool enable);
@@ -258,6 +265,9 @@ static inline int power_supply_set_voltage_limit(struct power_supply *psy,
 							{ return -ENOSYS; }
 static inline int power_supply_set_current_limit(struct power_supply *psy,
 							int limit)
+							{ return -ENOSYS; }
+static inline int power_supply_set_charging_enabled(struct power_supply *psy,
+							bool enable)
 							{ return -ENOSYS; }
 static inline int power_supply_set_online(struct power_supply *psy,
 							bool enable)

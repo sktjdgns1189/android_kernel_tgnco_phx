@@ -1,0 +1,25 @@
+
+&soc {
+	sound {
+		qcom,model = "msm8974-taiko-liquid-snd-card";
+
+		qcom,audio-routing =
+			"RX_BIAS", "MCLK",
+			"LDO_H", "MCLK",
+			"AIF4 MAD", "MCLK",
+			"Lineout_2 amp", "LINEOUT2",
+			"Lineout_4 amp", "LINEOUT4",
+			"Headphone amp", "HEADPHONE",
+			"AMIC2", "MIC BIAS2 External",
+			"MIC BIAS2 External", "Headset Mic",
+			"DMIC1", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Digital Mic1",
+			"DMIC3", "MIC BIAS3 External",
+			"MIC BIAS3 External", "Digital Mic3";
+
+		qcom,bottom-spk-pamp-gpio = <&msmgpio 9 0>;
+		qcom,hph-pamp-gpio = <&pm8941_gpios 9 0>;
+
+		qcom,cdc-micbias2-headset-only;
+	};
+};

@@ -2483,7 +2483,11 @@ int mmc_can_discard(struct mmc_card *card)
 	 * As there's no way to detect the discard support bit at v4.5
 	 * use the s/w feature support filed.
 	 */
+#ifdef CONFIG_MMC_FIH_SKIP_EMMC_V4P5
+	if ((card->ext_csd.feature_support & MMC_DISCARD_FEATURE) && card->cid.manfid != 0x70)
+#else
 	if (card->ext_csd.feature_support & MMC_DISCARD_FEATURE)
+#endif
 		return 1;
 	return 0;
 }
@@ -2493,7 +2497,11 @@ int mmc_can_sanitize(struct mmc_card *card)
 {
 	if (!mmc_can_trim(card) && !mmc_can_erase(card))
 		return 0;
+#ifdef CONFIG_MMC_FIH_SKIP_EMMC_V4P5
+	if ((card->ext_csd.sec_feature_support & EXT_CSD_SEC_SANITIZE) && card->cid.manfid != 0x70)
+#else
 	if (card->ext_csd.sec_feature_support & EXT_CSD_SEC_SANITIZE)
+#endif
 		return 1;
 	return 0;
 }

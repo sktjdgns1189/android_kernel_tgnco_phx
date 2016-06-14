@@ -1,0 +1,17 @@
+&i2c_0 {
+	ti,bq27520@55 {
+		status = "okay";
+		reg = <0x55>;
+		compatible = "ti,bq27520";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <77 0x2>;
+		bq27520,rom_addr = <0xB>;
+		bq27520,soc_gpio = <&msmgpio 77 0x00>;
+		bq27520,blo_gpio = <&pm8941_gpios 14 0x1>;
+		bq27520,bgd_gpio = <&pm8941_gpios 13 0x1>;
+		bq27520,dffs_ver = <5>;
+		bq27520,design_vol = <4350>;
+		bq27520,use-batt-id;
+		qcom,batid-vadc = <&pm8941_vadc>;
+	};
+};

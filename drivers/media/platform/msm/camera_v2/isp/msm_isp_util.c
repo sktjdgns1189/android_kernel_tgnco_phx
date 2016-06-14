@@ -152,6 +152,12 @@ int msm_isp_update_bandwidth(enum msm_isp_hw_client client,
 				isp_bandwidth_mgr.client_info[i].ib;
 		}
 	}
+	//******************************************************
+	//issue key : PHXL-11588, QC case#02070686
+	//We five times AB & IB to fix Bus overflow issue which is suggested by QC
+	//******************************************************
+	path->vectors[0].ab *= 5;
+	path->vectors[0].ib *= 5;
 	msm_bus_scale_client_update_request(isp_bandwidth_mgr.bus_client,
 		isp_bandwidth_mgr.bus_vector_active_idx);
 	mutex_unlock(&bandwidth_mgr_mutex);

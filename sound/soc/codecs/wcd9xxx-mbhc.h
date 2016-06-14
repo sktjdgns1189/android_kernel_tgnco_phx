@@ -15,6 +15,14 @@
 #include "wcd9xxx-resmgr.h"
 #include "wcdcal-hwdep.h"
 
+/*
+ * FIH_LEGACY_HEADSET_REPORT: Use switch device to report:
+ *                            1. Headset insertion. For FTM and boot sound.
+ *                            2. Button press. For FTM.
+ */
+#define FIH_LEGACY_HEADSET_REPORT
+#include <linux/switch.h>
+
 #define WCD9XXX_CFILT_FAST_MODE 0x00
 #define WCD9XXX_CFILT_SLOW_MODE 0x40
 #define WCD9XXX_CFILT_EXT_PRCHG_EN 0x30
@@ -249,6 +257,9 @@ struct wcd9xxx_mbhc_config {
 	bool use_vddio_meas;
 	bool enable_anc_mic_detect;
 	enum hw_jack_type hw_jack_type;
+#ifdef FIH_LEGACY_HEADSET_REPORT
+	bool legacy_report;
+#endif
 };
 
 struct wcd9xxx_cfilt_mode {
@@ -368,6 +379,12 @@ struct wcd9xxx_mbhc {
 	u8   scaling_mux_in;
 	/* Holds codec specific interrupt mapping */
 	const struct wcd9xxx_mbhc_intr *intr_ids;
+
+#ifdef FIH_LEGACY_HEADSET_REPORT
+	bool legacy_report;
+	struct switch_dev sdev_insert;
+	struct switch_dev sdev_button;
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_poke;

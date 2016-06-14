@@ -70,6 +70,9 @@ static const struct mmc_fixup mmc_fixups[] = {
 	MMC_FIXUP_EXT_CSD_REV("MMC16G", CID_MANFID_KINGSTON, CID_OEMID_ANY,
 			add_quirk, MMC_QUIRK_BROKEN_HPI, 5),
 
+	MMC_FIXUP_EXT_CSD_REV("SEM16G", CID_MANFID_SANDISK_EMMC, CID_OEMID_ANY,
+			add_quirk, MMC_QUIRK_BROKEN_HPI, 5),
+
 	/*
 	 * Some Hynix cards exhibit data corruption over reboots if cache is
 	 * enabled. Disable cache for all versions until a class of cards that
@@ -81,6 +84,9 @@ static const struct mmc_fixup mmc_fixups[] = {
 	MMC_FIXUP("MMC16G", CID_MANFID_KINGSTON, CID_OEMID_ANY, add_quirk_mmc,
 		  MMC_QUIRK_CACHE_DISABLE),
 
+	MMC_FIXUP("SEM16G", CID_MANFID_SANDISK_EMMC, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_CACHE_DISABLE),
+
 	END_FIXUP
 };
 
@@ -90,6 +96,11 @@ static const struct mmc_fixup mmc_fixups[] = {
 static int mmc_decode_cid(struct mmc_card *card)
 {
 	u32 *resp = card->raw_cid;
+
+	pr_info("%s: cid %08x%08x%08x%08x\n",
+		mmc_hostname(card->host),
+		card->raw_cid[0], card->raw_cid[1],
+		card->raw_cid[2], card->raw_cid[3]);
 
 	/*
 	 * The selection of the format here is based upon published
@@ -156,6 +167,11 @@ static int mmc_decode_csd(struct mmc_card *card)
 	struct mmc_csd *csd = &card->csd;
 	unsigned int e, m, a, b;
 	u32 *resp = card->raw_csd;
+
+	pr_info("%s: csd %08x%08x%08x%08x\n",
+		mmc_hostname(card->host),
+		card->raw_csd[0], card->raw_csd[1],
+		card->raw_csd[2], card->raw_csd[3]);
 
 	/*
 	 * We only understand CSD structure v1.1 and v1.2.
@@ -257,8 +273,14 @@ static int mmc_get_ext_csd(struct mmc_card *card, u8 **new_ext_csd)
 				mmc_hostname(card->host));
 			err = 0;
 		}
-	} else
+	} else {
+#ifdef CONFIG_MMC_FIH_SKIP_EMMC_V4P5
+		if(ext_csd[EXT_CSD_REV] >= 6 && card->cid.manfid == 0x70) {
+			ext_csd[EXT_CSD_REV] = 5;
+		}
+#endif
 		*new_ext_csd = ext_csd;
+	}
 
 	return err;
 }
@@ -310,6 +332,22 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 	BUG_ON(!card);
 
+	if (mmc_card_mmc(card)) {
+		int i, j;
+		char buffer[64], temp[10];
+
+		pr_info("%s: ext_csd ", mmc_hostname(card->host));
+		for (i = 0; i < 512/16 ; i++) {
+			memset(buffer, 0, sizeof(buffer));
+			memset(temp, 0, sizeof(temp));
+			for(j = 0 ; j < 16 ; j++) {
+				sprintf(temp, "%02X", ext_csd[511-(i*16+j)]);
+				strcat(buffer, temp);
+			}
+			pr_info("%s: %s\n", mmc_hostname(card->host), buffer);
+		}
+	}
+
 	if (!ext_csd)
 		return 0;
 
@@ -332,6 +370,11 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		err = -EINVAL;
 		goto out;
 	}
+#ifdef CONFIG_MMC_FIH_SKIP_EMMC_V4P5
+	if(card->ext_csd.rev >= 6 && card->cid.manfid == 0x70) {
+		card->ext_csd.rev = 5;
+	}
+#endif
 
 	/* fixup device after ext_csd revision field is updated */
 	mmc_fixup_device(card, mmc_fixups);
@@ -1660,9 +1703,16 @@ err:
 
 static int mmc_can_poweroff_notify(const struct mmc_card *card)
 {
+#ifdef CONFIG_MMC_FIH_SKIP_EMMC_V4P5
+	return card &&
+		mmc_card_mmc(card) &&
+		(card->ext_csd.power_off_notification == EXT_CSD_POWER_ON) &&
+		(card->cid.manfid != 0x70);
+#else
 	return card &&
 		mmc_card_mmc(card) &&
 		(card->ext_csd.power_off_notification == EXT_CSD_POWER_ON);
+#endif
 }
 
 static int mmc_poweroff_notify(struct mmc_card *card, unsigned int notify_type)
@@ -1921,6 +1971,7 @@ int mmc_attach_mmc(struct mmc_host *host)
 {
 	int err;
 	u32 ocr;
+	int retry = 0;
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
@@ -1933,6 +1984,7 @@ int mmc_attach_mmc(struct mmc_host *host)
 	if (err)
 		return err;
 
+start:
 	mmc_attach_bus_ops(host);
 	if (host->ocr_avail_mmc)
 		host->ocr_avail = host->ocr_avail_mmc;
@@ -1971,8 +2023,21 @@ int mmc_attach_mmc(struct mmc_host *host)
 	 * Detect and init the card.
 	 */
 	err = mmc_init_card(host, host->ocr, NULL);
-	if (err)
+	if (err) {
+		printk("[[%s]] mmc_int_card error: %d\n", __func__, err);
+		mmc_power_up(host);
+		mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_330, 0);
+		mmc_go_idle(host);
+		mmc_send_if_cond(host, host->ocr_avail);
+		if (!mmc_host_is_spi(host))
+			mmc_set_bus_mode(host, MMC_BUSMODE_OPENDRAIN);
+		err = mmc_send_op_cond(host, 0, &ocr);
+		if(host->card != NULL) {
+			mmc_remove_card(host->card);
+			host->card = NULL;
+		}
 		goto err;
+	}
 
 	mmc_release_host(host);
 	err = mmc_add_card(host->card);
@@ -1996,6 +2061,17 @@ err:
 
 	pr_err("%s: error %d whilst initialising MMC card\n",
 		mmc_hostname(host), err);
+	retry++;
+	if(strncmp(mmc_hostname(host), "mmc0", 4) == 0) {
+		if(retry >= 3) {
+			panic("MMC initialize failed 3 times\n");
+		} else {
+			printk("MMC initialize failed count: %d\n", retry);
+			goto start;
+		}
+	} else {
+		printk("%s: not a correct slot\n", mmc_hostname(host));
+	}
 
 	return err;
 }

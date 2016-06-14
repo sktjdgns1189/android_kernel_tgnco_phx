@@ -1,0 +1,10 @@
+&soc {
+	ti,bq24314c {
+		status = "okay";
+		compatible = "ti,bq24314c";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <27 0x2>;
+		bq24314c,ce_gpio = <&msmgpio 13 0>;
+		bq24314c,fault_gpio = <&msmgpio 27 0>;
+	};
+};

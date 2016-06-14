@@ -458,6 +458,7 @@ struct mmc_fixup {
 #define CID_MANFID_TOSHIBA	0x11
 #define CID_MANFID_MICRON	0x13
 #define CID_MANFID_SAMSUNG	0x15
+#define CID_MANFID_SANDISK_EMMC 0x45
 #define CID_MANFID_KINGSTON	0x70
 #define CID_MANFID_HYNIX	0x90
 
@@ -629,6 +630,7 @@ static inline int mmc_card_long_read_time(const struct mmc_card *c)
 }
 
 #define mmc_card_name(c)	((c)->cid.prod_name)
+#define mmc_card_manfid(c)	((c)->cid.manfid)
 #define mmc_card_id(c)		(dev_name(&(c)->dev))
 
 #define mmc_dev_to_card(d)	container_of(d, struct mmc_card, dev)
