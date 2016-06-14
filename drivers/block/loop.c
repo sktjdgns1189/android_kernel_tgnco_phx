@@ -1247,6 +1247,44 @@ loop_get_status64(struct loop_device *lo, struct loop_info64 __user *arg) {
 	return err;
 }
 
+static int
+loop_get_status_force(struct loop_device *lo, struct loop_info64 *info)
+{
+	if (lo->lo_state != Lo_bound)
+		return -ENXIO;
+
+	memset(info, 0, sizeof(*info));
+	info->lo_number = lo->lo_number;
+	info->lo_offset = lo->lo_offset;
+	info->lo_sizelimit = lo->lo_sizelimit;
+	info->lo_flags = lo->lo_flags;
+	memcpy(info->lo_file_name, lo->lo_file_name, LO_NAME_SIZE);
+	memcpy(info->lo_crypt_name, lo->lo_crypt_name, LO_NAME_SIZE);
+	info->lo_encrypt_type = lo->lo_encryption ? lo->lo_encryption->number : 0;
+
+	if (lo->lo_encrypt_key_size && capable(CAP_SYS_ADMIN)) {
+		info->lo_encrypt_key_size = lo->lo_encrypt_key_size;
+		memcpy(info->lo_encrypt_key, lo->lo_encrypt_key,
+		lo->lo_encrypt_key_size);
+	}
+	return 0;
+}
+
+static int
+loop_get_name(struct loop_device *lo, struct loop_info64 __user *arg) {
+	struct loop_info64 info64;
+	int err = 0;
+
+	if (!arg)
+		err = -EINVAL;
+	if (!err)
+		err = loop_get_status_force(lo, &info64);
+	if (!err && copy_to_user(arg, &info64, sizeof(info64)))
+		err = -EFAULT;
+
+	return err;
+}
+
 static int loop_set_capacity(struct loop_device *lo, struct block_device *bdev)
 {
 	int err;
@@ -1315,6 +1353,9 @@ static int lo_ioctl(struct block_device *bdev, fmode_t mode,
 		err = -EPERM;
 		if ((mode & FMODE_WRITE) || capable(CAP_SYS_ADMIN))
 			err = loop_set_capacity(lo, bdev);
+		break;
+	case LOOP_GET_LOOPNAME:
+		err = loop_get_name(lo, (struct loop_info64 __user *) arg);
 		break;
 	default:
 		err = lo->ioctl ? lo->ioctl(lo, cmd, arg) : -EINVAL;
@@ -1467,6 +1508,7 @@ static int lo_compat_ioctl(struct block_device *bdev, fmode_t mode,
 	case LOOP_CLR_FD:
 	case LOOP_GET_STATUS64:
 	case LOOP_SET_STATUS64:
+	case LOOP_GET_LOOPNAME:
 		arg = (unsigned long) compat_ptr(arg);
 	case LOOP_SET_FD:
 	case LOOP_CHANGE_FD:

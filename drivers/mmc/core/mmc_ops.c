@@ -598,6 +598,12 @@ int mmc_send_hpi_cmd(struct mmc_card *card, u32 *status)
 	unsigned int opcode;
 	int err;
 
+#ifdef CONFIG_MMC_FIH_SKIP_EMMC_V4P5
+	if(card->cid.manfid == 0x70) {
+		return -EINVAL;
+	}
+#endif
+
 	if (!card->ext_csd.hpi_en) {
 		pr_warning("%s: Card didn't support HPI command\n",
 			   mmc_hostname(card->host));

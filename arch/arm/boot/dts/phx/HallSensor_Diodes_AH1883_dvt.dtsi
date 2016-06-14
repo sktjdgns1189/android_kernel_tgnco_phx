@@ -1,0 +1,8 @@
+&soc {
+	Diodes,hallsensor {
+		compatible = "fih,hallsensor";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <20 0x3>;
+		hallsensor,irq-gpio  = <&msmgpio 20 0x00>;
+	};
+};

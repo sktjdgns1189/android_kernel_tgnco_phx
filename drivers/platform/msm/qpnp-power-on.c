@@ -386,6 +386,11 @@ qpnp_get_cfg(struct qpnp_pon *pon, u32 pon_type)
 	return NULL;
 }
 
+#ifdef CONFIG_FIH_IPO
+extern void fih_ipo_set_power_key_pressed(void);
+extern void fih_ipo_set_power_key_released(void);
+extern int fih_ipo_get_suspend_state(void);
+#endif
 static int
 qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 {
@@ -426,9 +431,24 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_FIH_IPO
+	if (fih_ipo_get_suspend_state()) {
+		if (pon_rt_bit == QPNP_PON_KPDPWR_N_SET) {
+			if (pon_rt_sts & pon_rt_bit) {
+				fih_ipo_set_power_key_pressed();
+			} else {
+				fih_ipo_set_power_key_released();
+			}
+		}
+	} else {
+#endif
 	input_report_key(pon->pon_input, cfg->key_code,
 					(pon_rt_sts & pon_rt_bit));
 	input_sync(pon->pon_input);
+#ifdef CONFIG_FIH_IPO
+	}
+#endif
+	pr_info("[PWR_KEY_WAKE] type:%d, sts:%d\n", cfg->pon_type, (pon_rt_sts & pon_rt_bit));
 
 	return 0;
 }

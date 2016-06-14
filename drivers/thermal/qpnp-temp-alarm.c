@@ -104,6 +104,11 @@ enum pmic_thermal_override_mode {
 	SOFTWARE_OVERRIDE_ENABLED,
 };
 
+/* Black Box */
+#define BBOX_PTEMP_GET_FAIL do {printk("BBox;%s: Get temp fail\n", __func__); printk("BBox::UEC;22::0\n");} while (0);
+#define BBOX_PTEMP_REGISTER_FAIL do {printk("BBox;%s: Register thermal fail\n", __func__); printk("BBox::UEC;22::4\n");} while (0);
+#define BBOX_PTEMP_IRQ_FAIL do {printk("BBox;%s: Request IRQ fail\n", __func__); printk("BBox::UEC;22::6\n");} while (0);
+
 static inline int qpnp_tm_read(struct qpnp_tm_chip *chip, u16 addr, u8 *buf,
 				int len)
 {
@@ -237,8 +242,10 @@ static int qpnp_tz_get_temp_no_adc(struct thermal_zone_device *thermal,
 		return -EINVAL;
 
 	rc = qpnp_tm_update_temp_no_adc(chip);
-	if (rc < 0)
+	if (rc < 0) {
+		BBOX_PTEMP_GET_FAIL;
 		return rc;
+	}
 
 	*temperature = chip->temperature;
 
@@ -258,6 +265,7 @@ static int qpnp_tz_get_temp_qpnp_adc(struct thermal_zone_device *thermal,
 	if (rc < 0) {
 		dev_err(&chip->spmi_dev->dev, "%s: %s: adc read failed, rc = %d\n",
 			__func__, chip->tm_name, rc);
+		BBOX_PTEMP_GET_FAIL;
 		return rc;
 	}
 
@@ -615,6 +623,7 @@ static int __devinit qpnp_tm_probe(struct spmi_device *spmi)
 		dev_err(&spmi->dev, "%s: thermal_zone_device_register() failed.\n",
 			__func__);
 		rc = -ENODEV;
+		BBOX_PTEMP_REGISTER_FAIL;
 		goto err_cancel_work;
 	}
 
@@ -623,6 +632,7 @@ static int __devinit qpnp_tm_probe(struct spmi_device *spmi)
 	if (rc < 0) {
 		dev_err(&spmi->dev, "%s: request_irq(%d) failed: %d\n",
 			__func__, chip->irq, rc);
+		BBOX_PTEMP_IRQ_FAIL;
 		goto err_free_tz;
 	}
 

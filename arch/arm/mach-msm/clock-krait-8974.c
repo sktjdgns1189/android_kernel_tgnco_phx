@@ -471,6 +471,8 @@ static void get_krait_bin_format_b(struct platform_device *pdev,
 		*pvs = 0;
 	}
 
+	printk("BBox::UPD;26::speed%d-pvs%d-bin-v%d\n",*speed,*pvs,*pvs_ver);
+	
 	dev_info(&pdev->dev, "PVS version: %d\n", *pvs_ver);
 
 	devm_iounmap(&pdev->dev, base);

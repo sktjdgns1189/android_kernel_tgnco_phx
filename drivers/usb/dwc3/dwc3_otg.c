@@ -27,6 +27,8 @@
 #define VBUS_REG_CHECK_DELAY	(msecs_to_jiffies(1000))
 #define MAX_INVALID_CHRGR_RETRY 3
 static int max_chgr_retry_count = MAX_INVALID_CHRGR_RETRY;
+static char vbus_disable_mode = 0;
+static struct usb_otg *the_usb_otg = NULL;
 module_param(max_chgr_retry_count, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(max_chgr_retry_count, "Max invalid charger retry count");
 static void dwc3_otg_reset(struct dwc3_otg *dotg);
@@ -203,6 +205,11 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 			dotg->vbus_otg = 0;
 			return ret;
 		}
+	}
+
+	if(vbus_disable_mode) {
+		on = 0;
+		dev_dbg(otg->phy->dev, "%s,vbus disable mode:enable\n",__func__);
 	}
 
 	if (on) {
@@ -467,18 +474,18 @@ static void dwc3_ext_event_notify(struct usb_otg *otg,
 				dev_warn(phy->dev, "pm_runtime_get failed!!\n");
 		}
 		if (ext_xceiv->id == DWC3_ID_FLOAT) {
-			dev_dbg(phy->dev, "XCVR: ID set\n");
+			dev_info(phy->dev, "XCVR: ID set\n");
 			set_bit(ID, &dotg->inputs);
 		} else {
-			dev_dbg(phy->dev, "XCVR: ID clear\n");
+			dev_info(phy->dev, "XCVR: ID clear\n");
 			clear_bit(ID, &dotg->inputs);
 		}
 
 		if (ext_xceiv->bsv) {
-			dev_dbg(phy->dev, "XCVR: BSV set\n");
+			dev_info(phy->dev, "XCVR: BSV set\n");
 			set_bit(B_SESS_VLD, &dotg->inputs);
 		} else {
-			dev_dbg(phy->dev, "XCVR: BSV clear\n");
+			dev_info(phy->dev, "XCVR: BSV clear\n");
 			clear_bit(B_SESS_VLD, &dotg->inputs);
 		}
 
@@ -549,7 +556,8 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 	else if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
 		power_supply_type = POWER_SUPPLY_TYPE_USB_CDP;
 	else if (dotg->charger->chg_type == DWC3_DCP_CHARGER ||
-			dotg->charger->chg_type == DWC3_PROPRIETARY_CHARGER)
+			dotg->charger->chg_type == DWC3_PROPRIETARY_CHARGER ||
+			dotg->charger->chg_type == DWC3_FLOATED_CHARGER)
 		power_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
 	else
 		power_supply_type = POWER_SUPPLY_TYPE_UNKNOWN;
@@ -780,6 +788,9 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 									1);
 					phy->state = OTG_STATE_B_PERIPHERAL;
 					work = 1;
+#ifdef FIH_USB_RETRY_METHOD
+					queue_delayed_work(system_nrt_wq, &dotg->check_charger_status_work, (msecs_to_jiffies(5000)));
+#endif
 					break;
 				case DWC3_FLOATED_CHARGER:
 					if (dotg->charger_retry_count <
@@ -796,8 +807,11 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					 */
 					if (dotg->charger_retry_count ==
 						max_chgr_retry_count) {
-						dwc3_otg_set_power(phy, 0);
+						dwc3_otg_set_power(phy, DWC3_FLOA_CHG_MAX);
 						pm_runtime_put_sync(phy->dev);
+#ifdef FIH_USB_RETRY_METHOD
+						queue_delayed_work(system_nrt_wq, &dotg->check_charger_status_work, (msecs_to_jiffies(3000)));
+#endif
 						break;
 					}
 					charger->start_detection(dotg->charger,
@@ -944,6 +958,123 @@ static void dwc3_otg_reset(struct dwc3_otg *dotg)
 				DWC3_OEVTEN_OTGBDEVVBUSCHNGEVNT);
 }
 
+static ssize_t
+show_vbus_disable_mode(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	pr_debug("%s",__func__);
+	return sprintf(buf, "%d\n",vbus_disable_mode);
+}
+
+static ssize_t
+set_vbus_disable_mode(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct usb_otg *otg = the_usb_otg;
+	int value = 0;
+
+	if(!otg)
+		return -EINVAL;
+
+	sscanf(buf, "%d", &value);
+	if( (value != 1) && (value != 0) ) {
+		return -EINVAL;
+	}
+
+	vbus_disable_mode = value;
+	pr_info("%s:%s",__func__,(vbus_disable_mode ? "vbus disable" : "vbus enable") );
+
+	if(value){
+		dwc3_otg_start_host(otg,0);
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(vbus_disable_mode, 0644, show_vbus_disable_mode, set_vbus_disable_mode);
+
+#ifdef FIH_USB_RETRY_METHOD
+int check_charger_retry_count_func(int count, int reset)
+{
+	static int check_charger_retry_count = 0;
+	int ret;
+
+	if(reset)
+		check_charger_retry_count = 0;
+
+	ret = check_charger_retry_count;
+	check_charger_retry_count += count;
+
+	return ret;
+}
+
+static void check_charger_status_work_func(struct work_struct *w)
+{
+	struct dwc3_otg *dotg = container_of(w, struct dwc3_otg, check_charger_status_work.work);
+	struct usb_phy *phy = dotg->otg.phy;
+	union power_supply_propval ret = {0,};
+	struct dwc3_charger *charger = dotg->charger;
+	int present, online, type;
+	int retry_count;
+
+	if (!dotg->psy) {
+		dotg->psy = power_supply_get_by_name("usb");
+		if (!dotg->psy) {
+			pr_err("couldn't get usb power supply\n");
+			return;
+		}
+	}
+	dotg->psy->get_property(dotg->psy, POWER_SUPPLY_PROP_PRESENT, &ret);
+	present = ret.intval;
+	dotg->psy->get_property(dotg->psy, POWER_SUPPLY_PROP_ONLINE, &ret);
+	online = ret.intval;
+	dotg->psy->get_property(dotg->psy, POWER_SUPPLY_PROP_TYPE, &ret);
+	type = ret.intval;
+	retry_count = check_charger_retry_count_func(1, 0);
+	if((retry_count % 5) == 0) {
+		if(charger) {
+			pr_info("%s: ps: %d, ol: %d, tp: %d, chg->tp: %d, times: %d\n", __func__, present, online, type, charger->chg_type, retry_count);
+		} else {
+			pr_info("%s: ps: %d, ol: %d, tp: %d, times: %d\n", __func__, present, online, type, retry_count);
+		}
+	}
+	if(present && !online && (retry_count <= 20)) {
+		if(charger) {
+			if(charger->chg_type == DWC3_FLOATED_CHARGER) {
+				pm_runtime_get_sync(phy->dev);
+				dotg->charger_retry_count = 0;
+				if(charger->start_detection) {
+					charger->start_detection(dotg->charger,false);
+					charger->start_detection(charger, true);
+				} else {
+					pr_err("%s: start_detection is NULL", __func__);
+				}
+				if(charger->chg_type != DWC3_FLOATED_CHARGER && charger->chg_type != DWC3_INVALID_CHARGER) {
+					pr_info("%s: FLOATED re-detect charger OK\n", __func__);
+					pm_runtime_put_sync(phy->dev);
+				}
+			} else if(charger->chg_type == DWC3_SDP_CHARGER) {
+				if(type == POWER_SUPPLY_TYPE_UNKNOWN) {
+					phy->state = OTG_STATE_B_IDLE;
+					if(charger->start_detection) {
+						charger->start_detection(dotg->charger,false);
+						charger->start_detection(charger, true);
+					} else {
+						pr_err("%s: start_detection is NULL", __func__);
+					}
+					if(charger->chg_type != DWC3_SDP_CHARGER && charger->chg_type != DWC3_INVALID_CHARGER) {
+						pr_info("%s: SDP re-detect charger OK\n", __func__);
+					}
+				}
+			} else if(charger->chg_type == DWC3_INVALID_CHARGER) {
+				queue_delayed_work(system_nrt_wq, &dotg->check_charger_status_work, (msecs_to_jiffies(5000)));
+			}
+		} else {
+			pr_err("%s: charger is NULL\n", __func__);
+		}
+	}
+}
+#endif
+
 /**
  * dwc3_otg_init - Initializes otg related registers
  * @dwc: Pointer to out controller context structure
@@ -957,6 +1088,18 @@ int dwc3_otg_init(struct dwc3 *dwc)
 	struct dwc3_otg *dotg;
 
 	dev_dbg(dwc->dev, "dwc3_otg_init\n");
+
+	ret = device_create_file(dwc->dev, &dev_attr_vbus_disable_mode);
+	if (ret) {
+		dev_err(dwc->dev, "%s: Failed to create vbus_disable_mode\n", __func__);
+		goto err_device_create_attrs;
+	}
+
+	ret = sysfs_create_link(dwc->dev->kobj.parent->parent, &dwc->dev->kobj, "udc");
+	if (ret) {
+		dev_err(dwc->dev, "%s: Failed to create vbus_disable_mode_link\n", __func__);
+		goto err_sysfs_create_link;
+	}
 
 	/*
 	 * GHWPARAMS6[10] bit is SRPSupport.
@@ -979,6 +1122,8 @@ int dwc3_otg_init(struct dwc3 *dwc)
 		dev_err(dwc->dev, "unable to allocate dwc3_otg\n");
 		return -ENOMEM;
 	}
+
+	the_usb_otg = &(dotg->otg);
 
 	/* DWC3 has separate IRQ line for OTG events (ID/BSV etc.) */
 	dotg->irq = platform_get_irq_byname(to_platform_device(dwc->dev),
@@ -1023,6 +1168,9 @@ int dwc3_otg_init(struct dwc3 *dwc)
 
 	init_completion(&dotg->dwc3_xcvr_vbus_init);
 	INIT_DELAYED_WORK(&dotg->sm_work, dwc3_otg_sm_work);
+#ifdef FIH_USB_RETRY_METHOD
+	INIT_DELAYED_WORK(&dotg->check_charger_status_work, check_charger_status_work_func);
+#endif
 
 	ret = request_irq(dotg->irq, dwc3_otg_interrupt, IRQF_SHARED,
 				"dwc3_otg", dotg);
@@ -1042,8 +1190,12 @@ err3:
 err2:
 	kfree(dotg->otg.phy);
 err1:
+	the_usb_otg = NULL;
 	dwc->dotg = NULL;
 	kfree(dotg);
+err_sysfs_create_link:
+	device_remove_file(dwc->dev, &dev_attr_vbus_disable_mode);
+err_device_create_attrs:
 
 	return ret;
 }
@@ -1058,6 +1210,9 @@ void dwc3_otg_exit(struct dwc3 *dwc)
 {
 	struct dwc3_otg *dotg = dwc->dotg;
 
+	sysfs_remove_link(dwc->dev->kobj.parent->parent, "udc");
+	device_remove_file(dwc->dev, &dev_attr_vbus_disable_mode);
+
 	/* dotg is null when GHWPARAMS6[10]=SRPSupport=0, see dwc3_otg_init */
 	if (dotg) {
 		if (dotg->charger)
@@ -1067,6 +1222,7 @@ void dwc3_otg_exit(struct dwc3 *dwc)
 		pm_runtime_put(dwc->dev);
 		free_irq(dotg->irq, dotg);
 		kfree(dotg->otg.phy);
+		the_usb_otg = NULL;
 		kfree(dotg);
 		dwc->dotg = NULL;
 	}

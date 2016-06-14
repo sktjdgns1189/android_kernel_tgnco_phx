@@ -1,0 +1,60 @@
+/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/include/ "memmap_evb.dtsi"
+/include/ "msm8974_platform_evb.dtsi"
+
+/* Power */
+/include/ "PMIC_QCT-PM8941_evt.dtsi"
+/include/ "PMIC_QCT-PM8841_evt.dtsi"
+/include/ "GPIO_evb.dtsi"
+/include/ "GPIO_PM8x41_evt.dtsi"
+
+/* Memory */
+/include/ "eMMC_KSI-KE4CN5B6A-32GB_evb.dtsi"
+/include/ "DDR_Elpida-EDFA164A1PB-GD-F-LPDDR3-2GB_evb.dtsi"
+
+/* Display / Touch Panel */
+/include/ "LCM_Truly-NT35595-cmd_evb.dtsi"
+/include/ "LCM_Innolux-NT35595-cmd_evt2.dtsi"
+/include/ "LCM_Innolux-NT35695-cmd_dvt.dtsi"
+/include/ "Backlight_RT4501_evt.dtsi"
+/include/ "Touch_Synaptics_DSX.dtsi"
+
+/* Camera */
+/include/ "Camera-iCatch-SPCA7002A-EU021_evt.dtsi"
+/include/ "Camera-iCatch-SPCA7002A-EU021-evt2-5_external_isp.dtsi"
+
+/* Audio */
+/include/ "Audio_alsa_evt.dtsi"
+/include/ "Audio_headset_evb.dtsi"
+/include/ "SmartAmp_NXP-TFA9890_evt.dtsi"
+
+/* Peripherals */
+/include/ "Keypad_evb.dtsi"
+/include/ "IndicatorLED_Everlight-19-237B-R6GHBHC-C01-2T-RGB_evb.dtsi"
+/include/ "Vibrator_NIDEC-LA4-503AC_evt.dtsi"
+/include/ "IrDA_Vishay-TFBS4652-TR3_evb.dtsi"
+/include/ "DigitalTV_FCI-FC8150B_evb.dtsi"
+
+/* Wireless */
+/include/ "Bluetooth_QCT-WCN3680_evb.dtsi"
+/include/ "WiFi_QCT-WCN3680_evb.dtsi"
+/include/ "GPS_QCT-WTR1625L_evb.dtsi"
+/include/ "FM_QCT-WCN3680_evb.dtsi"
+/include/ "NFC_NXP-PN547_dvt.dtsi"
+
+/* Sensor */
+/include/ "Gyro_Bosch-BMG160_evb.dtsi"
+/include/ "GSensor_Bosch-BMG150_evb.dtsi"
+/include/ "ECompass_Bosch-BMG150_evb.dtsi"
+/include/ "LightSensor-ALS_Sensortek-STK3210_evb.dtsi"

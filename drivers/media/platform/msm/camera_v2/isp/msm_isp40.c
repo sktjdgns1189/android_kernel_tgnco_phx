@@ -637,7 +637,7 @@ static long msm_vfe40_reset_hardware(struct vfe_device *vfe_dev ,
 	if (blocking) {
 		msm_camera_io_w_mb(rst_val, vfe_dev->vfe_base + 0xC);
 		rc = wait_for_completion_timeout(
-			&vfe_dev->reset_complete, msecs_to_jiffies(50));
+			&vfe_dev->reset_complete, msecs_to_jiffies(1000));  /* QC for issue about can not open '/dev/v4l-subdev15' */
 	} else {
 		msm_camera_io_w_mb(0x1EF, vfe_dev->vfe_base + 0xC);
 	}

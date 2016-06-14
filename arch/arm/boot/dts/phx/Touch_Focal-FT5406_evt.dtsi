@@ -1,0 +1,39 @@
+&soc {
+	i2c@f9924000 {
+		atmel_mxt_ts@4a {
+			status="disabled";
+			compatible = "";
+		};
+
+		focaltech,touch@38 {
+			compatible = "focaltech,5406";
+			reg = <0x38>;
+			interrupt-parent = <&msmgpio>;
+			interrupts = <54 0x2>;
+			vdd-supply = <&pm8941_l18>;
+			vcc_i2c-supply = <&pm8941_lvs1>;
+			focaltech,name = "ft5406";
+			focaltech,family-id = <0x55>;
+			focaltech,reset-gpio = <&msmgpio 60 0x00>;
+			focaltech,irq-gpio = <&msmgpio 54 0x00>;
+			focaltech,display-coords = <0 0 1080 1920>;
+			focaltech,panel-coords = <0 0 1080 2000>;
+			focaltech,fw-name = "ft5x06_fw_0D.bin";
+			focaltech,hard-reset-delay-ms = <3>;
+			focaltech,soft-reset-delay-ms = <197>;
+			focaltech,num-max-touches = <5>;
+			focaltech,fw-delay-aa-ms = <50>;
+			focaltech,fw-delay-55-ms = <30>;
+			focaltech,fw-upgrade-id1 = <0x79>;
+			focaltech,fw-upgrade-id2 = <0x03>;
+			focaltech,fw-delay-readid-ms = <10>;
+			focaltech,fw-delay-era-flsh-ms = <2000>;
+			focaltech,fw-auto-cal;
+			focaltech,regulator-enable;
+		};
+	};
+};
+
+&pm8941_lvs1 {
+	qcom,consumer-supplies = "vcc_i2c", "ft5406.0", "vdd", "ft5406.0";
+};

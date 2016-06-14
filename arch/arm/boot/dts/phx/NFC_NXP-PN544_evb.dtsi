@@ -1,0 +1,11 @@
+&i2c_6 {
+	nxp_nfc@28 {
+		compatible = "nxp,nfc";
+		reg = <0x28>;
+		nxp,ven-gpio = <&msmgpio 121 0x00>;
+		nxp,firm-gpio = <&msmgpio 120 0x00>;
+		interrupt-parent = <&msmgpio>;
+		interrupts = <46 0x2>;
+		nxp,irq-gpio = <&msmgpio 46 0x00>;
+	};
+};

@@ -95,6 +95,12 @@
 
 #define QPNP_BMS_DEV_NAME "qcom,qpnp-bms"
 
+#define BBS_LOG 1
+#ifdef BBS_LOG
+#define QPNPBMS_PROBE_ERROR do {printk("BBox;%s: Probe error\n", __func__); printk("BBox::UEC;12::0\n");} while (0);
+#define QPNPBMS_BATTERY_REMOVED_ERROR do {printk("BBox;%s: Battery removed error\n", __func__); printk("BBox::UEC;12::1\n");} while (0)
+#endif /* BBS_LOG */
+
 enum {
 	SHDW_CC,
 	CC
@@ -3607,9 +3613,12 @@ static void load_shutdown_data(struct qpnp_bms_chip *chip)
 		chip->battery_removed = true;
 		chip->shutdown_soc_invalid = true;
 		chip->shutdown_iavg_ma = MIN_IAVG_MA;
-		pr_debug("Ignoring shutdown SoC: invalid = %d, offmode = %d, out_of_limit = %d\n",
+		pr_info("Ignoring shutdown SoC: invalid = %d, offmode = %d, out_of_limit = %d\n",
 				invalid_stored_soc, offmode_battery_replaced,
 				shutdown_soc_out_of_limit);
+#ifdef BBS_LOG
+		QPNPBMS_BATTERY_REMOVED_ERROR;
+#endif
 	} else {
 		chip->shutdown_iavg_ma = read_shutdown_iavg_ma(chip);
 		chip->shutdown_soc = shutdown_soc;
@@ -4220,6 +4229,100 @@ static int setup_die_temp_monitoring(struct qpnp_bms_chip *chip)
 	return 0;
 }
 
+#ifdef CONFIG_FIH_MT_SLEEP
+static unsigned long tm_entry_sec = 0, tm_exit_sec = 0, tm_diff_sec = 0;
+static int shdw_cc_uah_suspend = 0, shdw_cc_uah_resume = 0;
+static int sc_mode = 0;
+
+static void notify_charger_lock(bool mode)
+{
+	struct power_supply *psy = NULL;
+
+	psy = power_supply_get_by_name("battery");
+	if (!psy) {
+		pr_debug("[%s] No battery power-supply\n", __func__);
+		return;
+	}
+	power_supply_set_online(psy, mode);
+}
+
+static ssize_t set_fih_sleep_current(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
+{
+	struct qpnp_bms_chip *chip = dev_get_drvdata(dev);
+
+	if (buf[0] == '1') {
+		sc_mode = 1;
+		shdw_cc_uah_suspend = 0;
+		shdw_cc_uah_resume = 0;
+	} else {
+		sc_mode = 0;
+	}
+
+	notify_charger_lock((bool)!!sc_mode);
+	reset_cc(chip, CLEAR_SHDW_CC);
+	power_supply_changed(&chip->bms_psy);
+
+	return count;
+}
+
+static ssize_t get_fih_sleep_current(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	int data1 = 0, data2 = 0;
+
+	tm_diff_sec = tm_exit_sec - tm_entry_sec;
+	if (tm_diff_sec == 0) {
+		data2 = 0;
+	} else {
+		data1 = shdw_cc_uah_resume - shdw_cc_uah_suspend;
+		data2 = (data1 * 60 * 60) / tm_diff_sec;
+	}
+	pr_info("[%s] time-diff:%lu, sleep current %d uA\n", __func__, tm_diff_sec, data2);
+
+	return sprintf(buf, "%d\n", data2);
+}
+static DEVICE_ATTR(sleep_current, 0644,
+	get_fih_sleep_current, set_fih_sleep_current);
+
+int get_sleep_current_mode(void)
+{
+	return sc_mode;
+}
+EXPORT_SYMBOL(get_sleep_current_mode);
+#endif
+
+#define FIH_DISABLE_DIE_TEMP
+#ifdef FIH_DISABLE_DIE_TEMP
+static int disable_die_flag = 0;
+static ssize_t set_disable_die_temp(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
+{
+	struct qpnp_bms_chip *chip = dev_get_drvdata(dev);
+
+	if (buf[0] == '1') {
+		qpnp_adc_tm_disable_chan_meas(chip->adc_tm_dev, &chip->die_temp_monitor_params);
+		disable_die_flag = 1;
+	} else {
+		refresh_die_temp_monitor(chip);
+		disable_die_flag = 0;
+	}
+
+	return count;
+}
+
+static ssize_t get_disable_die_temp(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", disable_die_flag);
+}
+static DEVICE_ATTR(disable_die, 0644,
+	get_disable_die_temp, set_disable_die_temp);
+
+#endif
+
 static int __devinit qpnp_bms_probe(struct spmi_device *spmi)
 {
 	struct qpnp_bms_chip *chip;
@@ -4231,6 +4334,9 @@ static int __devinit qpnp_bms_probe(struct spmi_device *spmi)
 
 	if (chip == NULL) {
 		pr_err("kzalloc() failed.\n");
+#ifdef BBS_LOG
+		QPNPBMS_PROBE_ERROR;
+#endif
 		return -ENOMEM;
 	}
 
@@ -4403,6 +4509,13 @@ static int __devinit qpnp_bms_probe(struct spmi_device *spmi)
 		goto unregister_dc;
 	}
 
+#ifdef CONFIG_FIH_MT_SLEEP
+	device_create_file(chip->dev, &dev_attr_sleep_current);
+#endif
+#ifdef FIH_DISABLE_DIE_TEMP
+	device_create_file(chip->dev, &dev_attr_disable_die);
+#endif
+
 	pr_info("probe success: soc =%d vbatt = %d ocv = %d r_sense_uohm = %u warm_reset = %d\n",
 			get_prop_bms_capacity(chip), vbatt, chip->last_ocv_uv,
 			chip->r_sense_uohm, warm_reset);
@@ -4418,6 +4531,10 @@ error_setup:
 	wake_lock_destroy(&chip->cv_wake_lock);
 error_resource:
 error_read:
+#ifdef BBS_LOG
+	if (rc != -EPROBE_DEFER)
+		QPNPBMS_PROBE_ERROR;
+#endif
 	return rc;
 }
 
@@ -4427,9 +4544,29 @@ static int qpnp_bms_remove(struct spmi_device *spmi)
 	return 0;
 }
 
+#ifdef CONFIG_FIH_IPO
+extern int fih_ipo_get_suspend_state(void);
+extern int fih_ipo_shutdown_capacity(void);
+extern void fih_ipo_set_shutdown_flag(void);
+#endif
 static int bms_suspend(struct device *dev)
 {
 	struct qpnp_bms_chip *chip = dev_get_drvdata(dev);
+
+#ifdef CONFIG_FIH_MT_SLEEP
+	if (sc_mode == 1) {
+		shdw_cc_uah_suspend = get_prop_bms_charge_counter_shadow(chip);
+		get_current_time(&tm_entry_sec);
+		pr_info("[%s] entry sec: %lu, suspend_cc:%d\n", __func__, tm_entry_sec, shdw_cc_uah_suspend);
+	}
+#endif
+#ifdef CONFIG_FIH_IPO
+	if (fih_ipo_get_suspend_state() &&
+		(chip->calculated_soc <= fih_ipo_shutdown_capacity())) {
+		fih_ipo_set_shutdown_flag();
+		return -EAGAIN;
+	}
+#endif
 
 	cancel_delayed_work_sync(&chip->calculate_soc_delayed_work);
 	chip->was_charging_at_sleep = is_battery_charging(chip);
@@ -4444,6 +4581,14 @@ static int bms_resume(struct device *dev)
 	unsigned long time_since_last_recalc;
 	unsigned long tm_now_sec;
 	struct qpnp_bms_chip *chip = dev_get_drvdata(dev);
+
+#ifdef CONFIG_FIH_MT_SLEEP
+	if (sc_mode == 1) {
+		shdw_cc_uah_resume = get_prop_bms_charge_counter_shadow(chip);
+		get_current_time(&tm_exit_sec);
+		pr_info("[%s] exit sec: %lu, resume_cc:%d\n", __func__, tm_exit_sec, shdw_cc_uah_resume);
+	}
+#endif
 
 	rc = get_current_time(&tm_now_sec);
 	if (rc) {
@@ -4462,6 +4607,13 @@ static int bms_resume(struct device *dev)
 	schedule_delayed_work(&chip->calculate_soc_delayed_work,
 		round_jiffies_relative(msecs_to_jiffies
 		(time_until_next_recalc)));
+
+#ifdef CONFIG_FIH_IPO
+	if (fih_ipo_get_suspend_state() &&
+		(chip->calculated_soc <= fih_ipo_shutdown_capacity())) {
+		fih_ipo_set_shutdown_flag();
+	}
+#endif
 	return 0;
 }
 

@@ -160,6 +160,8 @@ int loop_unregister_transfer(int number);
 #define LOOP_CHANGE_FD		0x4C06
 #define LOOP_SET_CAPACITY	0x4C07
 
+#define LOOP_GET_LOOPNAME	0x4C10
+
 /* /dev/loop-control interface */
 #define LOOP_CTL_ADD		0x4C80
 #define LOOP_CTL_REMOVE		0x4C81

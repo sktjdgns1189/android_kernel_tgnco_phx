@@ -25,6 +25,8 @@
 
 #include <sound/core.h>
 
+#define FIH_MBHC_KEYCODE
+
 struct input_dev;
 
 /**

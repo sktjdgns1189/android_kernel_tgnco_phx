@@ -122,6 +122,20 @@ static struct usb_descriptor_header *hs_diag_desc[] = {
 	NULL,
 };
 
+static struct usb_string diag_string_defs[] = {
+	[0].s       = "QC Interface",
+	{  }, /* end of list */
+};
+
+static struct usb_gadget_strings diag_string_table = {
+	.language   = 0x0409, /* en-us */
+	.strings    = diag_string_defs,
+};
+
+static struct usb_gadget_strings *diag_strings[] = {
+	&diag_string_table,
+	NULL,
+};
 static struct usb_descriptor_header *ss_diag_desc[] = {
 	(struct usb_descriptor_header *) &intf_desc,
 	(struct usb_descriptor_header *) &ss_bulk_in_desc,
@@ -638,8 +652,17 @@ static int diag_function_bind(struct usb_configuration *c,
 	struct diag_context *ctxt = func_to_diag(f);
 	struct usb_ep *ep;
 	int status = -ENODEV;
+	int status_id;
 
 	intf_desc.bInterfaceNumber =  usb_interface_id(c, f);
+
+	if (diag_string_defs[0].id == 0) {
+		status_id = usb_string_id(c->cdev);
+		if (status_id < 0)
+			return status_id;
+		diag_string_defs[0].id = status_id;
+		intf_desc.iInterface = status_id;
+	}
 
 	ep = usb_ep_autoconfig(cdev->gadget, &fs_bulk_in_desc);
 	if (!ep)
@@ -742,6 +765,8 @@ int diag_function_add(struct usb_configuration *c, const char *name,
 	dev->function.unbind = diag_function_unbind;
 	dev->function.set_alt = diag_function_set_alt;
 	dev->function.disable = diag_function_disable;
+	dev->function.strings = diag_strings;
+
 	spin_lock_init(&dev->lock);
 	INIT_LIST_HEAD(&dev->read_pool);
 	INIT_LIST_HEAD(&dev->write_pool);

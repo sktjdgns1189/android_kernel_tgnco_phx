@@ -1,0 +1,50 @@
+#ifndef __FIH_HWID_2_H
+#define __FIH_HWID_2_H
+
+/* special for modem to link this file
+ * to get the project, phase, and band enum */
+
+enum {
+	FIH_PRJ_DEFAULT = 0,
+	FIH_PRJ_PHX, /* 8 */
+	FIH_PRJ_MAX
+};
+
+enum {
+	FIH_REV_DEFAULT = 0,
+	FIH_REV_EVB,
+	FIH_REV_EVB2,
+	FIH_REV_EVB3,
+	FIH_REV_EVT,
+	FIH_REV_EVT2,
+	FIH_REV_EVT3,
+	FIH_REV_EVT4,
+	FIH_REV_EVT5,
+	FIH_REV_EVT6,
+	FIH_REV_DVT,
+	FIH_REV_DVT2,
+	FIH_REV_DVT3,
+	FIH_REV_DVT4,
+	FIH_REV_DVT5,
+	FIH_REV_DVT6,
+	FIH_REV_PVT,
+	FIH_REV_PVT2,
+	FIH_REV_PVT3,
+	FIH_REV_MP,
+	FIH_REV_MP2,
+	FIH_REV_MP3,
+	FIH_REV_MAX
+};
+
+enum {
+	FIH_RF_DEFAULT = 0,
+
+	FIH_RF_G_850_900_1800_1900_W_1_2_L_1_3_5_7_9_17 = 121,
+	FIH_RF_G_850_900_1800_1900_W_1_2_L_1_3_5_7_8_9 = 122,
+
+	/* NO BAND */
+	FIH_RF_NONE = 240, /* RF_BAND-ID = 0 */
+	FIH_RF_MAX = 255,
+};
+
+#endif /* __FIH_HWID_2_H */

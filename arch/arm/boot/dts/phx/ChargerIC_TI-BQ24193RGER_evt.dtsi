@@ -1,0 +1,36 @@
+&i2c_0 {
+	ti,bq2419x@6b {
+		status = "okay";
+		reg = <0x6b>;
+		compatible = "ti,bq2419x";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <54 0x2>;
+
+		/* Pin settings */
+		bq2419x,gpio_int = <&msmgpio 54 0x00>;
+		bq2419x,gpio_ce = <&msmgpio 131 0x00>;
+		bq2419x,gpio_psel = <&pm8941_gpios 12 0x00>;
+		bq2419x,gpio_chgpg = <&msmgpio 76 0x00>;
+		bq2419x,gpio_chgotg = <&msmgpio 132 0x00>;
+		bq2419x,gpio_chgstat = <&msmgpio 89 0x00>;
+		bq2419x,psel_invert = <1>;
+		bq2419x,chgotg_invert = <1>;
+
+		/* Config data */
+		bq2419x,input_voltage_mV = <4600>;
+		bq2419x,input_current_mA_sdp = <2>;
+		bq2419x,input_current_mA_dcp = <4>;
+		bq2419x,min_system_mV = <3600>;
+		bq2419x,prechg_current_mA = <512>;
+		bq2419x,max_charge_current_mA = <2048>;
+		bq2419x,term_current_mA = <128>;
+		bq2419x,max_charge_voltage_mV = <4352>;
+		bq2419x,pre_to_fast_mV = <1>;
+		bq2419x,otg_current_mA = <0>;
+		bq2419x,recharge_delta_mV = <0>;
+		bq2419x,stimer_hr_sdp = <3>;
+		bq2419x,stimer_hr_dcp = <2>;
+		bq2419x,jeita_voltage = <1>;
+		bq2419x,dynamic_vindpm = <1>;
+	};
+};

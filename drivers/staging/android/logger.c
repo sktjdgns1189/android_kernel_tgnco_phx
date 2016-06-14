@@ -29,6 +29,10 @@
 
 #include <asm/ioctls.h>
 
+#ifdef CONFIG_FIH_LAST_ALOG
+#include "mach/fih_alog_ram_console.h"
+#endif
+
 #ifndef CONFIG_LOGCAT_SIZE
 #define CONFIG_LOGCAT_SIZE 256
 #endif
@@ -442,6 +446,7 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 	return count;
 }
 
+#ifndef CONFIG_FIH_LAST_ALOG
 /*
  * logger_aio_write - our write method, implementing support for write(),
  * writev(), and aio_write(). Writes are our fast path, and we try to optimize
@@ -508,6 +513,7 @@ ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 
 	return ret;
 }
+#endif /* !CONFIG_FIH_LAST_ALOG */
 
 static struct logger_log *get_log_from_minor(int);
 
@@ -698,6 +704,11 @@ static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+#ifdef CONFIG_FIH_LAST_ALOG
+ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
+			 unsigned long nr_segs, loff_t ppos);
+#endif
+
 static const struct file_operations logger_fops = {
 	.owner = THIS_MODULE,
 	.read = logger_read,
@@ -736,6 +747,152 @@ DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024)
 DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, CONFIG_LOGCAT_SIZE*1024)
 DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, CONFIG_LOGCAT_SIZE*1024)
 DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, CONFIG_LOGCAT_SIZE*1024)
+#ifdef CONFIG_FIH_BBOX_ALOG
+DEFINE_LOGGER_DEVICE(log_fih, LOGGER_LOG_FIH, CONFIG_LOGCAT_SIZE*1024)
+#endif
+
+#ifdef CONFIG_FIH_LAST_ALOG
+/* logger_aio_write - fih add last alog and bbox,
+ * and move it after log_xxxx declare to make success.
+ */
+
+/*
+ * logger_aio_write - our write method, implementing support for write(),
+ * writev(), and aio_write(). Writes are our fast path, and we try to optimize
+ * them above all else.
+ */
+ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
+			 unsigned long nr_segs, loff_t ppos)
+{
+	struct logger_log *log = file_get_log(iocb->ki_filp);
+	size_t orig = log->w_off;
+	struct logger_entry header;
+	struct timespec now;
+	ssize_t ret = 0;
+
+	#ifdef CONFIG_FIH_LAST_ALOG
+	LogType log_type = LOG_TYPE_ALL;
+	int overrun=0;
+	char *tag;
+	int need_print = 0;
+	ssize_t pLen=0;
+	ssize_t tLen=0;
+	ssize_t mLen=0;
+	char *mBase;
+	char *pBase;
+	#endif
+
+	now = current_kernel_time();
+
+	header.pid = current->tgid;
+	header.tid = current->pid;
+	header.sec = now.tv_sec;
+	header.nsec = now.tv_nsec;
+	header.euid = current_euid();
+	header.len = min_t(size_t, iocb->ki_left, LOGGER_ENTRY_MAX_PAYLOAD);
+	header.hdr_size = sizeof(struct logger_entry);
+
+	/* null writes succeed, return zero */
+	if (unlikely(!header.len))
+		return 0;
+
+	mutex_lock(&log->mutex);
+
+	/*
+	 * Fix up any readers, pulling them forward to the first readable
+	 * entry after (what will be) the new write offset. We do this now
+	 * because if we partially fail, we can end up with clobbered log
+	 * entries that encroach on readable buffer.
+	 */
+	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
+
+	#ifdef CONFIG_FIH_LAST_ALOG
+	 /* This API is heavily dependent on a user space assumption
+	 * that the full log entry comprising 3 vectors will be passed
+	 * to it in the format:
+	 * (from user space logger file -
+	 * system/core/liblog/logd_write.c):
+	 *    vec[0].iov_base  = (unsigned char *) &prio;
+	 *    vec[0].iov_len    = 1;
+	 *    vec[1].iov_base   = (void *) tag;
+	 *    vec[1].iov_len    = strlen(tag) + 1;
+	 *    vec[2].iov_base   = (void *) msg;
+	 *    vec[2].iov_len    = strlen(msg) + 1;
+	 * Note: vec in userspace is "iov" here.
+	 * Since this driver supplies a function for aio_write, there
+	 * is no aio queueing or retry done. Once we are here we
+	 * consume all of what is passed to us, with or without error.
+	 * That means that no partial vector sets should ever be passed
+	 * in.
+	 */
+	tag = (iov+1)->iov_base;
+	tLen = (iov+1)->iov_len;
+	mBase = (iov+2)->iov_base;
+	mLen = (iov+2)->iov_len;
+	pBase = (iov+0)->iov_base;
+	pLen = (iov+0)->iov_len;
+
+	if (log == &log_main) {
+		log_type = LOG_TYPE_MAIN;
+		need_print = 1;
+	} else if (log == &log_radio) {
+		log_type = LOG_TYPE_RADIO;
+		need_print = 1;
+	} else if (log == &log_events) {
+		log_type = LOG_TYPE_EVENTS;
+		need_print = 1;
+	} else if (log == &log_system ) {
+		log_type = LOG_TYPE_SYSTEM;
+		need_print = 1;
+	}
+
+	if (need_print) {
+		overrun += alog_ram_console_write_log(log_type, (char *)&header, (int)sizeof(struct logger_entry));
+	}
+	#endif
+
+	do_write_log(log, &header, sizeof(struct logger_entry));
+
+	while (nr_segs-- > 0) {
+		size_t len;
+		ssize_t nr;
+
+		/* figure out how much of this vector we can keep */
+		len = min_t(size_t, iov->iov_len, header.len - ret);
+
+		/* write out this segment's payload */
+		nr = do_write_log_from_user(log, iov->iov_base, len);
+
+		#ifdef CONFIG_FIH_LAST_ALOG
+		if (need_print) {
+			overrun += alog_ram_console_write_log(log_type, iov->iov_base, len);
+		}
+		#endif
+
+		if (unlikely(nr < 0)) {
+			log->w_off = orig;
+			mutex_unlock(&log->mutex);
+			return nr;
+		}
+
+		iov++;
+		ret += nr;
+	}
+
+	#ifdef CONFIG_FIH_LAST_ALOG
+	if (overrun && need_print) {
+		alog_ram_console_sync_time(log_type, SYNC_AFTER);
+	}
+	#endif
+
+	mutex_unlock(&log->mutex);
+
+	/* wake up any blocked readers */
+	wake_up_interruptible(&log->wq);
+
+	return ret;
+}
+#endif
 
 static struct logger_log *get_log_from_minor(int minor)
 {
@@ -747,6 +904,10 @@ static struct logger_log *get_log_from_minor(int minor)
 		return &log_radio;
 	if (log_system.misc.minor == minor)
 		return &log_system;
+	#ifdef CONFIG_FIH_BBOX_ALOG
+	if (log_fih.misc.minor == minor)
+		return &log_fih;    
+	#endif
 	return NULL;
 }
 
@@ -786,6 +947,12 @@ static int __init logger_init(void)
 	ret = init_log(&log_system);
 	if (unlikely(ret))
 		goto out;
+
+	#ifdef CONFIG_FIH_BBOX_ALOG
+	ret = init_log(&log_fih);
+	if (unlikely(ret))
+		goto out;
+	#endif
 
 out:
 	return ret;

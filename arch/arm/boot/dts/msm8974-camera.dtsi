@@ -186,7 +186,7 @@
 		interrupts = <0 50 0>;
 		interrupt-names = "cci";
 		gpios = <&msmgpio 19 0>,
-			<&msmgpio 20 0>,
+			<&msmgpio 23 0>,
 			<&msmgpio 21 0>,
 			<&msmgpio 22 0>;
 		qcom,gpio-tbl-num = <0 1 2 3>;
@@ -219,8 +219,8 @@
 };
 
 &master1 {
-	qcom,hw-thigh = <78>;
-	qcom,hw-tlow = <114>;
+	qcom,hw-thigh = <19>;	//78: 100kHz 19:400kHz
+	qcom,hw-tlow = <28>;	//114:100kHz 28:400kHz
 	qcom,hw-tsu-sto = <28>;
 	qcom,hw-tsu-sta = <28>;
 	qcom,hw-thd-dat = <10>;

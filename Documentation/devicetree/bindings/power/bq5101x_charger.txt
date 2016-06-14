@@ -1,0 +1,54 @@
+TI BQ5101X Wireless Charger
+
+The bq5101x wireless charger provides the AC/DC power conversion while integrating
+the digital control required to comply with the Qi v1.0 communication protocol.
+
+Required properties:
+
+ - status: "okay" or "disabled" for this feature
+ - compatible : Must be "ti,bq5101x"
+ - bq5101x,mode : Set the default mode, it's an enum value:
+			0: WLC and adapter mode
+			1: WLC only mode
+			2: OTG mode
+			3: Disable mode
+			(This mode value also relate to the design of en1/en2 gpios)
+
+Optional properties:
+
+ - interrupt-parent :		Interrupt gpio group parent.
+
+ - interrupts :			Specific gpio for interrupt, it should be same as soc_gpio.
+
+ - bq5101x,term_gpio :		Input that allows allows the upper termination threshold to
+				be programmable.
+
+ - bq5101x,fault_gpio :		As a CTRL pin pull to ground to send end power transfer (EPT)
+				fault to the transmitter or pull-up to an internal rail
+				(i.e. 1.8 V) to send EPT termination to the transmitter.
+
+ - bq5101x,en1_gpio :		Inputs that allow user to enable/disable wireless and wired
+ - bq5101x,en2_gpio :		charging <EN1 EN2>:
+					<00> wireless charging is enabled unless AD voltage > 3.6 V
+					<01> Dynamic communication current limit disabled
+					<10> AD-EN pulled low, wireless charging disabled
+					<11> wired and wireless charging disabled.
+
+ - bq5101x,ad_en_n_gpio :	Push-pull driver for external PFET connecting AD and OUT.
+
+ - bq5101x,chg_state_n_gpio :	Open-drain output, active when output current is being
+				delivered to the load.
+
+Example:
+&soc {
+	ti,bq5101x {
+		status = "OK";
+		compatible = "ti,bq5101x";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <&msmgpio 144 0>;
+		bq5101x,mode = <0>;
+		bq5101x,en1_gpio = <&msmgpio 94 0>;
+		bq5101x,en2_gpio = <&msmgpio 95 0>;
+		bq5101x,chg_state_n_gpio = <&msmgpio 144 0>;
+	};
+};

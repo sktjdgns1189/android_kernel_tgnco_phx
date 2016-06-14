@@ -1,0 +1,12 @@
+&soc {
+	ti,bq5101x {
+		status = "disabled";
+		compatible = "ti,bq5101x";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <&msmgpio 144 0>;
+		bq5101x,mode = <0>;
+		bq5101x,en1_gpio = <&msmgpio 94 0>;
+		bq5101x,en2_gpio = <&msmgpio 95 0>;
+		bq5101x,chg_state_n_gpio = <&msmgpio 144 0>;
+	};
+};

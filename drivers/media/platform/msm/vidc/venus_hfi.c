@@ -1077,6 +1077,22 @@ static int __unset_free_ocmem(struct venus_hfi_device *device)
 	if (!device->res->ocmem_size)
 		return rc;
 
+/* FIH, Case 02017411 patch 1285641 { */
+#if (1)
+	mutex_lock(&device->write_lock);
+	mutex_lock(&device->read_lock);
+	rc = IS_VENUS_IN_VALID_STATE(device);
+	mutex_unlock(&device->read_lock);
+	mutex_unlock(&device->write_lock);
+
+	if (!rc) {
+		dprintk(VIDC_WARN,
+			"Core is in bad state, Skipping unset OCMEM\n");
+		goto core_in_bad_state;
+	}
+#endif
+/* FIH, Case 02017411 patch 1285641 } */
+
 	init_completion(&release_resources_done);
 	rc = __unset_ocmem(device);
 	if (rc) {
@@ -1093,6 +1109,11 @@ static int __unset_free_ocmem(struct venus_hfi_device *device)
 		goto release_resources_failed;
 	}
 
+/* FIH, Case 02017411 patch 1285641 { */
+#if (1)
+core_in_bad_state:
+#endif
+/* FIH, Case 02017411 patch 1285641 } */
 	rc = __free_ocmem(device);
 	if (rc) {
 		dprintk(VIDC_ERR, "Failed to free OCMEM during PC\n");
@@ -2034,11 +2055,25 @@ static int venus_hfi_core_release(void *device)
 			return -EIO;
 		}
 		mutex_unlock(&dev->clk_pwr_lock);
+
+/* FIH, Case 02017411 patch { */
+#if (0)
 		rc = __unset_free_ocmem(dev);
 		if (rc)
 			dprintk(VIDC_ERR,
 					"Failed to unset and free OCMEM in core release, rc : %d\n",
 					rc);
+#else
+		if (dev->state != VENUS_STATE_DEINIT) {
+			rc = __unset_free_ocmem(dev);
+			if (rc)
+				dprintk(VIDC_ERR,
+						"Failed in unset_free_ocmem() in %s, rc : %d\n",
+						__func__, rc);
+		}
+#endif
+/* FIH, Case 02017411 patch } */
+
 		mutex_lock(&dev->clk_pwr_lock);
 		rc = venus_hfi_clk_gating_off(device);
 		if (rc) {
@@ -2122,11 +2157,33 @@ static void venus_hfi_core_clear_interrupt(struct venus_hfi_device *device)
 	u32 intr_status = 0;
 	int rc = 0;
 
+	/* FIH, Case 02061287 patch { */
+	#if (1)
+	if (!device) {
+		dprintk(VIDC_ERR, "%s Invalid paramter: %p\n",
+			__func__, device);
+		return;
+	}
+	#endif
+	/* FIH, Case 02061287 patch } */
+
 	if (!device->callback)
 		return;
 
 	mutex_lock(&device->write_lock);
 	mutex_lock(&device->clk_pwr_lock);
+
+	/* FIH, Case 02061287 patch { */
+	#if (1)
+	if (device->state == VENUS_STATE_DEINIT) {
+		dprintk(VIDC_DBG, "SPURIOUS_INTR for device: 0x%x: "
+			"times: %d interrupt_status: %d",
+			(u32) device, ++device->spur_count, intr_status);
+		goto err_clk_gating_off;
+	}
+	#endif
+	/* FIH, Case 02061287 patch } */
+
 	rc = venus_hfi_clk_gating_off(device);
 	if (rc) {
 		dprintk(VIDC_ERR,
@@ -2892,6 +2949,22 @@ static void venus_hfi_pm_hndlr(struct work_struct *work)
 	device->pc_num_cmds = 0;
 	mutex_unlock(&device->clk_pwr_lock);
 
+/* FIH, Case 02017411 patch 1285641 { */
+#if (1)
+	mutex_lock(&device->write_lock);
+	mutex_lock(&device->read_lock);
+	rc = IS_VENUS_IN_VALID_STATE(device);
+	mutex_unlock(&device->read_lock);
+	mutex_unlock(&device->write_lock);
+
+	if (!rc) {
+		dprintk(VIDC_WARN,
+			"Core is in bad state, Skipping power collapse\n");
+		return;
+	}
+#endif
+/* FIH, Case 02017411 patch 1285641 } */
+
 	rc = __unset_free_ocmem(device);
 	if (rc) {
 		dprintk(VIDC_ERR,
@@ -2983,6 +3056,7 @@ static int venus_hfi_try_clk_gating(struct venus_hfi_device *device)
 	mutex_unlock(&device->write_lock);
 	return rc;
 }
+
 static void venus_hfi_process_msg_event_notify(
 	struct venus_hfi_device *device, void *packet)
 {
@@ -2995,6 +3069,13 @@ static void venus_hfi_process_msg_event_notify(
 		(struct hfi_msg_event_notify_packet *)msg_hdr;
 	if (event_pkt && event_pkt->event_id ==
 		HFI_EVENT_SYS_ERROR) {
+
+/* FIH, Case 02017411 patch 1285641 { */
+#if (1)
+		VENUS_SET_STATE(device, VENUS_STATE_DEINIT);
+#endif
+/* FIH, Case 02017411 patch 1285641 } */
+
 		vsfr = (struct hfi_sfr_struct *)
 				device->sfr.align_virtual_addr;
 		if (vsfr)
@@ -3008,7 +3089,14 @@ static void venus_hfi_response_handler(struct venus_hfi_device *device)
 	u32 rc = 0;
 	struct hfi_sfr_struct *vsfr = NULL;
 	dprintk(VIDC_INFO, "#####venus_hfi_response_handler#####\n");
+/* FIH, Case 02017411 patch { */
+#if (0)
 	if (device) {
+#else
+	/* Process messages only if device is in valid state*/
+	if (device && device->state != VENUS_STATE_DEINIT) {
+#endif
+/* FIH, Case 02017411 patch } */
 		if ((device->intr_status &
 			VIDC_WRAPPER_INTR_CLEAR_A2HWD_BMSK)) {
 			dprintk(VIDC_ERR, "Received: Watchdog timeout %s",
@@ -3023,6 +3111,20 @@ static void venus_hfi_response_handler(struct venus_hfi_device *device)
 		}
 
 		while (!venus_hfi_iface_msgq_read(device, packet)) {
+/* FIH, Case 02017411 patch { */
+#if (1)
+			/* During SYS_ERROR processing the device state
+			*  will be changed to DEINIT. Below check will
+			*  make sure no messages messages are read or
+			*  processed after processing SYS_ERROR
+			*/
+			if (device->state == VENUS_STATE_DEINIT) {
+				dprintk(VIDC_ERR,
+					"core DEINIT'd, stopping q reads\n");
+				break;
+			}
+#endif
+/* FIH, Case 02017411 patch } */
 			rc = hfi_process_msg_packet(device->callback,
 				device->device_id,
 				(struct vidc_hal_msg_pkt_hdr *) packet,
@@ -3686,7 +3788,13 @@ static void venus_hfi_unload_fw(void *dev)
 		return;
 	}
 	if (device->resources.fw.cookie) {
-		flush_workqueue(device->vidc_workq);
+		/* FIH, QC case patch { */
+		#if (1)
+		flush_workqueue(device->vidc_workq);  /* FIH, Case 02061287 patch, add back */
+		#else
+		//flush_workqueue(device->vidc_workq);  /* FIH, Case 02017411 patch, remove it */
+		#endif
+		/* FIH, QC case patch } */
 		flush_workqueue(device->venus_pm_workq);
 		subsystem_put(device->resources.fw.cookie);
 		venus_hfi_interface_queues_release(dev);
@@ -3707,6 +3815,8 @@ static void venus_hfi_unload_fw(void *dev)
 	}
 }
 
+/* FIH, Case 02017411 patch { */
+#if (0)
 static int venus_hfi_resurrect_fw(void *dev)
 {
 	struct venus_hfi_device *device = dev;
@@ -3746,6 +3856,8 @@ static int venus_hfi_resurrect_fw(void *dev)
 exit:
 	return rc;
 }
+#endif
+/* FIH, Case 02017411 patch } */
 
 static int venus_hfi_get_fw_info(void *dev, enum fw_info info)
 {
@@ -3986,7 +4098,11 @@ static void venus_init_hfi_callbacks(struct hfi_device *hdev)
 	hdev->iommu_get_domain_partition = venus_hfi_iommu_get_domain_partition;
 	hdev->load_fw = venus_hfi_load_fw;
 	hdev->unload_fw = venus_hfi_unload_fw;
+/* FIH, Case 02017411 patch { */
+#if (0)
 	hdev->resurrect_fw = venus_hfi_resurrect_fw;
+#endif
+/* FIH, Case 02017411 patch } */
 	hdev->get_fw_info = venus_hfi_get_fw_info;
 	hdev->get_info = venus_hfi_get_info;
 	hdev->get_stride_scanline = venus_hfi_get_stride_scanline;

@@ -72,6 +72,11 @@ void mmc_decode_cid(struct mmc_card *card)
 {
 	u32 *resp = card->raw_cid;
 
+	pr_info("%s: cid %08x%08x%08x%08x\n",
+		mmc_hostname(card->host),
+		card->raw_cid[0], card->raw_cid[1],
+		card->raw_cid[2], card->raw_cid[3]);
+
 	memset(&card->cid, 0, sizeof(struct mmc_cid));
 
 	/*
@@ -102,6 +107,11 @@ static int mmc_decode_csd(struct mmc_card *card)
 	struct mmc_csd *csd = &card->csd;
 	unsigned int e, m, csd_struct;
 	u32 *resp = card->raw_csd;
+
+	pr_info("%s: csd %08x%08x%08x%08x\n",
+		mmc_hostname(card->host),
+		card->raw_csd[0], card->raw_csd[1],
+		card->raw_csd[2], card->raw_csd[3]);
 
 	csd_struct = UNSTUFF_BITS(resp, 126, 2);
 
@@ -1447,9 +1457,11 @@ remove_card:
 	mmc_claim_host(host);
 err:
 	mmc_detach_bus(host);
-	if (err)
+	if (err) {
 		pr_err("%s: error %d whilst initialising SD card: rescan: %d\n",
 		       mmc_hostname(host), err, host->rescan_disable);
+		printk ("BBox::UEC; 43::3\n");
+	}
 
 	return err;
 }

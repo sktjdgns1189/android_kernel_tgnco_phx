@@ -1,0 +1,32 @@
+&soc {
+	ti,drv2603 {
+		status = "okay";
+		compatible = "ti,drv2603";
+		drv2603,en_gpio = <&msmgpio 86 0>;
+		drv2603,pwm_gpio = <&pm8941_gpios 23 0>;
+		drv2603,mode_ctrl = <0>;
+
+		drv2603,default_level = <50>;
+		drv2603,max_timeout_ms = <15000>;
+		drv2603,vib_break_ms = <10>;
+		drv2603,pwm_channel = <0>;
+		drv2603,pwm_period_us = <32>;
+	};
+};
+
+&pm8941_lsid1 {
+	pwm@b100 {
+		compatible = "qcom,qpnp-pwm";
+		reg = <0xb100 0x100>,
+		      <0xb042 0x7e>;
+		reg-names = "qpnp-lpg-channel-base", "qpnp-lpg-lut-base";
+		qcom,channel-id = <0>;
+		status = "okay";
+		qcom,force-pwm-size = <9>;
+		qcom,period = <32>;
+		qcom,pwm {
+			qcom,duty = <16>;
+			label = "pwm";
+		};
+	};
+};

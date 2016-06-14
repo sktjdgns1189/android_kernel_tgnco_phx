@@ -140,7 +140,11 @@ static int bt_configure_vreg(struct bt_power_vreg_data *vreg)
 	if (!(vreg->reg)) {
 		rc = bt_vreg_init(vreg);
 		if (rc < 0)
+		{
+			pr_info("BBox; %s LINE=%d name=%s rc=%d\n",__func__,__LINE__,vreg->name,rc);
+			pr_info("BBox::UEC; 14::0\n");
 			return rc;
+		}
 	}
 	rc = bt_vreg_enable(vreg);
 
@@ -159,6 +163,8 @@ static int bt_configure_gpios(int on)
 		if (rc) {
 			BT_PWR_ERR("unable to request gpio %d (%d)\n",
 					bt_reset_gpio, rc);
+					pr_info("BBox; %s LINE=%d rc=%d\n",__func__,__LINE__,rc);
+					pr_info("BBox::UEC; 14::0\n");
 			return rc;
 		}
 
@@ -236,12 +242,20 @@ static int bluetooth_power(int on)
 gpio_fail:
 		if (bt_power_pdata->bt_gpio_sys_rst)
 			gpio_free(bt_power_pdata->bt_gpio_sys_rst);
+		pr_info("BBox; %s LINE=%d rc=%d\n",__func__,__LINE__,rc);
+		pr_info("BBox::UEC; 14::0\n");
 		bt_vreg_disable(bt_power_pdata->bt_chip_pwd);
 chip_pwd_fail:
+		pr_info("BBox; %s LINE=%d rc=%d\n",__func__,__LINE__,rc);
+		pr_info("BBox::UEC; 14::0\n");
 		bt_vreg_disable(bt_power_pdata->bt_vdd_pa);
 vdd_pa_fail:
+		pr_info("BBox; %s LINE=%d rc=%d\n",__func__,__LINE__,rc);
+		pr_info("BBox::UEC; 14::0\n");
 		bt_vreg_disable(bt_power_pdata->bt_vdd_ldo);
 vdd_ldo_fail:
+		pr_info("BBox; %s LINE=%d rc=%d\n",__func__,__LINE__,rc);
+		pr_info("BBox::UEC; 14::0\n");
 		bt_vreg_disable(bt_power_pdata->bt_vdd_io);
 	}
 
@@ -279,6 +293,8 @@ static int bluetooth_power_rfkill_probe(struct platform_device *pdev)
 
 	if (!rfkill) {
 		dev_err(&pdev->dev, "rfkill allocate failed\n");
+		pr_info("BBox; %s LINE=%d\n",__func__,__LINE__);
+		pr_info("BBox::UEC; 14::2\n");
 		return -ENOMEM;
 	}
 
@@ -329,6 +345,8 @@ static int bt_dt_parse_vreg_info(struct device *dev,
 		if (!vreg) {
 			dev_err(dev, "No memory for vreg: %s\n", vreg_name);
 			ret = -ENOMEM;
+			pr_info("BBox; %s LINE=%d ret=%d\n",__func__,__LINE__,ret);
+			pr_info("BBox::UEC; 14::2\n");
 			goto err;
 		}
 
@@ -363,14 +381,19 @@ static int bt_power_populate_dt_pinfo(struct platform_device *pdev)
 	BT_PWR_DBG("");
 
 	if (!bt_power_pdata)
+	{
+		pr_info("BBox; %s LINE=%d\n",__func__,__LINE__);
+		pr_info("BBox::UEC; 14::2\n");
 		return -ENOMEM;
-
+	}
 	if (pdev->dev.of_node) {
 		bt_power_pdata->bt_gpio_sys_rst =
 			of_get_named_gpio(pdev->dev.of_node,
 						"qca,bt-reset-gpio", 0);
 		if (bt_power_pdata->bt_gpio_sys_rst < 0) {
 			BT_PWR_ERR("bt-reset-gpio not provided in device tree");
+			pr_info("BBox; %s LINE=%d\n",__func__,__LINE__);
+			pr_info("BBox::UEC; 14::2\n");
 			return bt_power_pdata->bt_gpio_sys_rst;
 		}
 
@@ -417,6 +440,8 @@ static int __devinit bt_power_probe(struct platform_device *pdev)
 
 	if (!bt_power_pdata) {
 		BT_PWR_ERR("Failed to allocate memory");
+		pr_info("BBox; %s LINE=%d\n",__func__,__LINE__);
+		pr_info("BBox::UEC; 14::2\n");
 		return -ENOMEM;
 	}
 
@@ -424,6 +449,8 @@ static int __devinit bt_power_probe(struct platform_device *pdev)
 		ret = bt_power_populate_dt_pinfo(pdev);
 		if (ret < 0) {
 			BT_PWR_ERR("Failed to populate device tree info");
+			pr_info("BBox; %s LINE=%d ret=%d\n",__func__,__LINE__,ret);
+			pr_info("BBox::UEC; 14::2\n");
 			goto free_pdata;
 		}
 		pdev->dev.platform_data = bt_power_pdata;

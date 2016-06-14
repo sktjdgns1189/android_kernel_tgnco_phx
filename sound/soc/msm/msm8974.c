@@ -33,6 +33,17 @@
 #include "qdsp6v2/msm-pcm-routing-v2.h"
 #include "../codecs/wcd9xxx-common.h"
 #include "../codecs/wcd9320.h"
+#include <linux/proc_fs.h>
+
+/*
+ * FIH_AMPLIFIER: 1. Control two speaker amplifiers with different enable pin.
+ *                2. Support headphone and earpiece amplifier.
+ *                3. Earpiece and top speaker shares same amplifier.
+ * FIH_USE_NO_TYPE_JACK: Qualcomm reference design uses NC type audio jack but FIH uses
+ *                       NO type.
+ */
+#define FIH_AMPLIFIER
+#define FIH_USE_NO_TYPE_JACK
 
 #define DRV_NAME "msm8974-asoc-taiko"
 
@@ -58,6 +69,16 @@ static int msm8974_auxpcm_rate = 8000;
 #define LO_3_SPK_AMP	0x2
 #define LO_2_SPK_AMP	0x4
 #define LO_4_SPK_AMP	0x8
+#ifdef FIH_AMPLIFIER
+#define HEADPHONE_AMP	0x10
+#define EAR_AMP		0x20
+
+/* Follow FIH HW design */
+#define BOTTOM_SPK_AMP_POS	LO_2_SPK_AMP
+#define BOTTOM_SPK_AMP_NEG	LO_4_SPK_AMP
+#define TOP_SPK_AMP_POS		LO_1_SPK_AMP
+#define TOP_SPK_AMP_NEG		LO_3_SPK_AMP
+#endif
 
 #define I2S_PCM_SEL 1
 #define I2S_PCM_SEL_OFFSET 1
@@ -77,6 +98,7 @@ static int msm8974_auxpcm_rate = 8000;
 #define EXT_CLASS_AB_DELAY_DELTA 1000
 
 #define NUM_OF_AUXPCM_GPIOS 4
+#define NUM_OF_MI2S_GPIOS 4
 
 static void *adsp_state_notifier;
 
@@ -123,7 +145,11 @@ static struct wcd9xxx_mbhc_config mbhc_cfg = {
 	.mclk_rate = TAIKO_EXT_CLK_RATE,
 	.gpio = 0,
 	.gpio_irq = 0,
+#ifdef FIH_USE_NO_TYPE_JACK
+	.gpio_level_insert = 0,
+#else
 	.gpio_level_insert = 1,
+#endif
 	.detect_extn_cable = true,
 	.micbias_enable_flags = 1 << MBHC_MICBIAS_ENABLE_THRESHOLD_HEADSET,
 	.insert_detect = true,
@@ -136,6 +162,9 @@ static struct wcd9xxx_mbhc_config mbhc_cfg = {
 	.use_vddio_meas = true,
 	.enable_anc_mic_detect = false,
 	.hw_jack_type = SIX_POLE_JACK,
+#ifdef FIH_LEGACY_HEADSET_REPORT
+	.legacy_report = true,
+#endif
 };
 
 struct msm_auxpcm_gpio {
@@ -149,12 +178,35 @@ struct msm_auxpcm_ctrl {
 	void __iomem *mux;
 };
 
+struct msm_mi2s_gpio {
+	unsigned gpio_no;
+	const char *gpio_name;
+};
+
+struct msm_mi2s_ctrl {
+	struct msm_mi2s_gpio *pin_data;
+	u32 cnt;
+};
+
 struct msm8974_asoc_mach_data {
 	int mclk_gpio;
 	u32 mclk_freq;
 	int us_euro_gpio;
 	struct msm_auxpcm_ctrl *pri_auxpcm_ctrl;
 	struct msm_auxpcm_ctrl *sec_auxpcm_ctrl;
+	struct msm_mi2s_gpio *mclk_pin;
+	struct msm_mi2s_ctrl *mi2s_ctrl;
+	u32 sec_clk_usrs;
+};
+
+static const struct afe_clk_cfg lpass_default = {
+	AFE_API_VERSION_I2S_CONFIG,
+	Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ,
+	Q6AFE_LPASS_OSR_CLK_12_P288_MHZ,
+	Q6AFE_LPASS_CLK_SRC_INTERNAL,
+	Q6AFE_LPASS_CLK_ROOT_DEFAULT,
+	Q6AFE_LPASS_MODE_BOTH_VALID,
+	0,
 };
 
 #define GPIO_NAME_INDEX 0
@@ -172,6 +224,17 @@ static char *msm_sec_auxpcm_gpio_name[][2] = {
 	{"SEC_AUXPCM_SYNC",      "qcom,sec-auxpcm-gpio-sync"},
 	{"SEC_AUXPCM_DIN",       "qcom,sec-auxpcm-gpio-din"},
 	{"SEC_AUXPCM_DOUT",      "qcom,sec-auxpcm-gpio-dout"},
+};
+
+static char *msm_mi2s_gpio_name[][2] = {
+	{"SEC_MI2S_WS",          "qcom,sec-mi2s-gpio-ws"},
+	{"SEC_MI2S_D0",          "qcom,sec-mi2s-gpio-data0"},
+	{"SEC_MI2S_D1",          "qcom,sec-mi2s-gpio-data1"},
+	{"SEC_MI2S_SCLK",        "qcom,sec-mi2s-gpio-sclk"},
+};
+
+static char *msm_mclk_gpio[][2] = {
+	{"MI2S_MCLK",             "qcom,sec-mi2s-gpio-mclk"},
 };
 
 struct msm8974_liquid_dock_dev {
@@ -211,12 +274,23 @@ static int slim0_rx_sample_rate = SAMPLING_RATE_48KHZ;
 static int msm_proxy_rx_ch = 2;
 static int hdmi_rx_sample_rate = SAMPLING_RATE_48KHZ;
 
+static atomic_t mi2s_ref_count;
+
 static struct mutex cdc_mclk_mutex;
 static struct clk *codec_clk;
 static int clk_users;
 static atomic_t prim_auxpcm_rsc_ref;
 static atomic_t sec_auxpcm_rsc_ref;
 
+#ifdef FIH_AMPLIFIER
+static int top_spk_pamp_gpio = -1;
+static int top_spk_select_gpio = -1;
+static int bottom_spk_pamp_gpio = -1;
+static int hph_pamp_gpio = -1;
+static int msm_ext_top_spk_pamp;
+static int msm_ext_bottom_spk_pamp;
+static int msm_ext_hph_pamp;
+#endif
 
 static int msm8974_liquid_ext_spk_power_amp_init(void)
 {
@@ -263,6 +337,215 @@ static int msm8974_liquid_ext_spk_power_amp_init(void)
 
 	return 0;
 }
+
+static int fih_ext_spk_amp_read_proc(char *page, char **start, off_t off,
+		int count, int *eof, void *data)
+{
+	int len;
+	bool ext_spk_amp_support;
+
+	ext_spk_amp_support = of_property_read_bool(spdev->dev.of_node, "fih,ext-spk-amp-support");
+
+	if(ext_spk_amp_support)
+		len = snprintf(page, PAGE_SIZE, "Support\n");
+	else
+		len = snprintf(page, PAGE_SIZE, "Not Support\n");
+
+	return len;
+}
+
+static int fih_ext_spk_amp_init(void)
+{
+
+	if (create_proc_read_entry("AllHWList/ExtSpkAmp", 0, NULL, fih_ext_spk_amp_read_proc, NULL) == NULL)
+	{
+		proc_mkdir("AllHWList", NULL);
+		if (create_proc_read_entry("AllHWList/ExtSpkAmp", 0, NULL, fih_ext_spk_amp_read_proc, NULL) == NULL)
+		{
+			printk(KERN_ERR "fail to create proc/%s\n", "AllHWList/ExtSpkAmp");
+		}
+	}
+
+	return 0;
+}
+
+
+#ifdef FIH_AMPLIFIER
+static int msm8974_viana_ext_spk_hph_power_amp_init(void)
+{
+	int ret = 0;
+
+	top_spk_pamp_gpio = of_get_named_gpio(spdev->dev.of_node,
+		"qcom,top-spk-pamp-gpio", 0);
+	if (gpio_is_valid(top_spk_pamp_gpio)) {
+		ret = gpio_request(top_spk_pamp_gpio, "top_spk_pamp_gpio");
+		if (ret) {
+			pr_err("%s: gpio_request failed for top_spk_pamp_gpio.\n",
+				__func__);
+			return -EINVAL;
+		}
+		gpio_direction_output(top_spk_pamp_gpio, 0);
+	}
+
+	top_spk_select_gpio = of_get_named_gpio(spdev->dev.of_node,
+		"qcom,top-spk-select-gpio", 0);
+	if (gpio_is_valid(top_spk_select_gpio)) {
+		ret = gpio_request(top_spk_select_gpio, "top_spk_select_gpio");
+		if (ret) {
+			pr_err("%s: gpio_request failed for top_spk_select_gpio.\n",
+				__func__);
+			return -EINVAL;
+		}
+		gpio_direction_output(top_spk_select_gpio, 1); /* switch to receiver */
+	}
+
+	bottom_spk_pamp_gpio = of_get_named_gpio(spdev->dev.of_node,
+		"qcom,bottom-spk-pamp-gpio", 0);
+	if (gpio_is_valid(bottom_spk_pamp_gpio)) {
+		ret = gpio_request(bottom_spk_pamp_gpio, "bottom_spk_pamp_gpio");
+		if (ret) {
+			pr_err("%s: gpio_request failed for bottom_spk_pamp_gpio.\n",
+				__func__);
+			return -EINVAL;
+		}
+		gpio_direction_output(bottom_spk_pamp_gpio, 0);
+	}
+
+	hph_pamp_gpio = of_get_named_gpio(spdev->dev.of_node,
+		"qcom,hph-pamp-gpio", 0);
+	if (gpio_is_valid(hph_pamp_gpio)) {
+		ret = gpio_request(hph_pamp_gpio, "hph_pamp_gpio");
+		if (ret) {
+			pr_err("%s: gpio_request failed for hph_pamp_gpio.\n",
+				__func__);
+			return -EINVAL;
+		}
+		gpio_direction_output(hph_pamp_gpio, 0);
+	}
+
+	return 0;
+}
+
+static void msm8974_viana_ext_spk_hph_power_amp_on(u32 spk)
+{
+	if (spk & (BOTTOM_SPK_AMP_POS | BOTTOM_SPK_AMP_NEG)) {
+		if ((msm_ext_bottom_spk_pamp & BOTTOM_SPK_AMP_POS) &&
+			(msm_ext_bottom_spk_pamp & BOTTOM_SPK_AMP_NEG)) {
+			pr_debug("%s() External Bottom Speaker Ampl already "
+				"turned on. spk = 0x%08x\n", __func__, spk);
+			return;
+		}
+
+		msm_ext_bottom_spk_pamp |= spk;
+
+		if ((msm_ext_bottom_spk_pamp & BOTTOM_SPK_AMP_POS) &&
+			(msm_ext_bottom_spk_pamp & BOTTOM_SPK_AMP_NEG)) {
+			if (gpio_is_valid(bottom_spk_pamp_gpio))
+				gpio_direction_output(bottom_spk_pamp_gpio, 1);
+			pr_debug("%s: slepping 4 ms after turning on external "
+				" Bottom Speaker Ampl\n", __func__);
+			usleep_range(4000, 4000);
+		}
+	} else if (spk & (TOP_SPK_AMP_POS | TOP_SPK_AMP_NEG | EAR_AMP)) {
+		if ((msm_ext_top_spk_pamp & TOP_SPK_AMP_POS) &&
+			(msm_ext_top_spk_pamp & TOP_SPK_AMP_NEG)) {
+			pr_debug("%s() External Top Speaker Ampl already"
+				"turned on. spk = 0x%08x\n", __func__, spk);
+			return;
+		} else if (msm_ext_top_spk_pamp & EAR_AMP) {
+			pr_debug("%s() External Ear Ampl already"
+				"turned on. spk = 0x%08x\n", __func__, spk);
+			return;
+		}
+
+		msm_ext_top_spk_pamp |= spk;
+
+		if ((msm_ext_top_spk_pamp & TOP_SPK_AMP_POS) &&
+			(msm_ext_top_spk_pamp & TOP_SPK_AMP_NEG)) {
+			if (gpio_is_valid(top_spk_pamp_gpio))
+				gpio_direction_output(top_spk_pamp_gpio, 1);
+			if (gpio_is_valid(top_spk_select_gpio))
+				gpio_direction_output(top_spk_select_gpio, 0);
+			pr_debug("%s: sleeping 4 ms after turning on external "
+				" Top Speaker Ampl\n", __func__);
+			usleep_range(4000, 4000);
+		} else if (msm_ext_top_spk_pamp & EAR_AMP) {
+			if (gpio_is_valid(top_spk_pamp_gpio))
+				gpio_direction_output(top_spk_pamp_gpio, 1);
+			if (gpio_is_valid(top_spk_select_gpio))
+				gpio_direction_output(top_spk_select_gpio, 1);
+			pr_debug("%s: sleeping 4 ms after turning on external "
+				" Ear Ampl\n", __func__);
+			usleep_range(4000, 4000);
+		}
+	} else if (spk & HEADPHONE_AMP) {
+		if (msm_ext_hph_pamp & HEADPHONE_AMP) {
+			pr_debug("%s() External Headphone Ampl already"
+				"turned on. spk = 0x%08x\n", __func__, spk);
+			return;
+		}
+
+		msm_ext_hph_pamp |= spk;
+
+		if (gpio_is_valid(hph_pamp_gpio))
+			gpio_direction_output(hph_pamp_gpio, 1);
+		pr_debug("%s: sleeping 4 ms after turning on external "
+			" Headphone Ampl\n", __func__);
+		usleep_range(4000, 4000);
+	} else {
+		pr_err("%s: ERROR : Invalid External Speaker Ampl. spk = 0x%08x\n",
+			__func__, spk);
+		return;
+	}
+}
+
+static void msm8974_viana_ext_spk_hph_power_amp_off(u32 spk)
+{
+	if (spk & (BOTTOM_SPK_AMP_POS | BOTTOM_SPK_AMP_NEG)) {
+		if (!msm_ext_bottom_spk_pamp)
+			return;
+
+		if (gpio_is_valid(bottom_spk_pamp_gpio))
+			gpio_direction_output(bottom_spk_pamp_gpio, 0);
+		msm_ext_bottom_spk_pamp = 0;
+
+		pr_debug("%s: sleeping 4 ms after turning off external "
+			" Bottom Speaker Ampl\n", __func__);
+
+		usleep_range(4000, 4000);
+	} else if (spk & (TOP_SPK_AMP_POS | TOP_SPK_AMP_NEG | EAR_AMP)) {
+		if (!msm_ext_top_spk_pamp)
+			return;
+
+		if (gpio_is_valid(top_spk_pamp_gpio))
+			gpio_direction_output(top_spk_pamp_gpio, 0);
+		if (gpio_is_valid(top_spk_select_gpio))
+			gpio_direction_output(top_spk_select_gpio, 1); /* switch to receiver */
+		msm_ext_top_spk_pamp = 0;
+
+		pr_debug("%s: sleeping 4 ms after turning off external "
+			" Top Speaker Ampl\n", __func__);
+
+		usleep_range(4000, 4000);
+	} else if (spk & HEADPHONE_AMP) {
+		if (!msm_ext_hph_pamp)
+			return;
+
+		if (gpio_is_valid(hph_pamp_gpio))
+			gpio_direction_output(hph_pamp_gpio, 0);
+		msm_ext_hph_pamp = 0;
+
+		pr_debug("%s: sleeping 4 ms after turning off external "
+			" Headphone Ampl\n", __func__);
+
+		usleep_range(4000, 4000);
+	} else  {
+		pr_err("%s: ERROR : Invalid Ext Spk Ampl. spk = 0x%08x\n",
+			__func__, spk);
+		return;
+	}
+}
+#endif /* FIH_AMPLIFIER */
 
 static void msm8974_liquid_ext_ult_spk_power_amp_enable(u32 on)
 {
@@ -475,6 +758,12 @@ static void msm8974_ext_spk_power_amp_on(u32 spk)
 		msm8974_liquid_ext_spk_power_amp_on(spk);
 	else if (gpio_is_valid(ext_ult_lo_amp_gpio))
 		msm8974_fluid_ext_us_amp_on(spk);
+#ifdef FIH_AMPLIFIER
+	else if (gpio_is_valid(top_spk_pamp_gpio) ||
+		 gpio_is_valid(bottom_spk_pamp_gpio) ||
+		 gpio_is_valid(hph_pamp_gpio))
+		msm8974_viana_ext_spk_hph_power_amp_on(spk);
+#endif
 }
 
 static void msm8974_liquid_ext_spk_power_amp_off(u32 spk)
@@ -509,6 +798,12 @@ static void msm8974_ext_spk_power_amp_off(u32 spk)
 		msm8974_liquid_ext_spk_power_amp_off(spk);
 	else if (gpio_is_valid(ext_ult_lo_amp_gpio))
 		msm8974_fluid_ext_us_amp_off(spk);
+#ifdef FIH_AMPLIFIER
+	else if (gpio_is_valid(top_spk_pamp_gpio) ||
+		 gpio_is_valid(bottom_spk_pamp_gpio) ||
+		 gpio_is_valid(hph_pamp_gpio))
+		msm8974_viana_ext_spk_hph_power_amp_off(spk);
+#endif
 }
 
 static void msm8974_ext_control(struct snd_soc_codec *codec)
@@ -571,6 +866,12 @@ static int msm_ext_spkramp_event(struct snd_soc_dapm_widget *w,
 			msm8974_ext_spk_power_amp_on(LO_2_SPK_AMP);
 		else if  (!strncmp(w->name, "Lineout_4 amp", 14))
 			msm8974_ext_spk_power_amp_on(LO_4_SPK_AMP);
+#ifdef FIH_AMPLIFIER
+		else if (!strncmp(w->name, "Headphone amp", 14))
+			msm8974_ext_spk_power_amp_on(HEADPHONE_AMP);
+		else if (!strncmp(w->name, "Ear amp", 8))
+			msm8974_ext_spk_power_amp_on(EAR_AMP);
+#endif
 		else {
 			pr_err("%s() Invalid Speaker Widget = %s\n",
 					__func__, w->name);
@@ -585,6 +886,12 @@ static int msm_ext_spkramp_event(struct snd_soc_dapm_widget *w,
 			msm8974_ext_spk_power_amp_off(LO_2_SPK_AMP);
 		else if  (!strncmp(w->name, "Lineout_4 amp", 14))
 			msm8974_ext_spk_power_amp_off(LO_4_SPK_AMP);
+#ifdef FIH_AMPLIFIER
+		else if (!strncmp(w->name, "Headphone amp", 14))
+			msm8974_ext_spk_power_amp_off(HEADPHONE_AMP);
+		else if (!strncmp(w->name, "Ear amp", 8))
+			msm8974_ext_spk_power_amp_off(EAR_AMP);
+#endif
 		else {
 			pr_err("%s() Invalid Speaker Widget = %s\n",
 					__func__, w->name);
@@ -694,6 +1001,10 @@ static const struct snd_soc_dapm_widget msm8974_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SPK("Lineout_2 amp", msm_ext_spkramp_event),
 	SND_SOC_DAPM_SPK("Lineout_4 amp", msm_ext_spkramp_event),
+#ifdef FIH_AMPLIFIER
+	SND_SOC_DAPM_SPK("Headphone amp", msm_ext_spkramp_event),
+	SND_SOC_DAPM_SPK("Ear amp", msm_ext_spkramp_event),
+#endif
 	SND_SOC_DAPM_SPK("SPK_ultrasound amp",
 					 msm_ext_spkramp_ultrasound_event),
 
@@ -725,6 +1036,8 @@ static char const *slim0_rx_sample_rate_text[] = {"KHZ_48", "KHZ_96",
 					"KHZ_192"};
 static const char *const proxy_rx_ch_text[] = {"One", "Two", "Three", "Four",
 	"Five",	"Six", "Seven", "Eight"};
+
+static const char *const tx_bit_format_text[] = {"S16_LE", "S24_LE"};
 
 static char const *hdmi_rx_sample_rate_text[] = {"KHZ_48", "KHZ_96",
 					"KHZ_192"};
@@ -1286,6 +1599,226 @@ static struct snd_soc_ops msm_sec_auxpcm_be_ops = {
 	.shutdown = msm_sec_auxpcm_shutdown,
 };
 
+static int msm_mi2s_get_gpios(struct msm_mi2s_ctrl *mi2s_ctrl)
+{
+	struct msm_mi2s_gpio *pin_data = NULL;
+	int ret = 0;
+	int i;
+	int j;
+
+	pin_data = mi2s_ctrl->pin_data;
+	if (!pin_data) {
+		pr_err("%s: Invalid control data for MI2S\n", __func__);
+		ret = -EINVAL;
+		goto err;
+	}
+	for (i = 0; i < mi2s_ctrl->cnt; i++, pin_data++) {
+		ret = gpio_request(pin_data->gpio_no,
+				   pin_data->gpio_name);
+		pr_debug("%s: gpio = %d, gpio name = %s\n"
+			 "ret = %d\n", __func__,
+			pin_data->gpio_no,
+			pin_data->gpio_name,
+			ret);
+		if (ret) {
+			pr_err("%s: Failed to request gpio %d\n",
+				 __func__, pin_data->gpio_no);
+			/* Release all GPIOs on failure */
+			if (i > 0) {
+				for (j = i; j >= 0; j--)
+					gpio_free(pin_data->gpio_no);
+			}
+			goto err;
+		}
+	}
+err:
+	return ret;
+}
+
+static int msm_mi2s_get_mclk_gpio(struct msm_mi2s_gpio *mclk_pin)
+{
+	int ret = 0;
+
+	if (!mclk_pin) {
+		pr_err("%s: Invalid mclk data for MI2S\n", __func__);
+		ret = -EINVAL;
+		goto err;
+	}
+	ret = gpio_request(mclk_pin->gpio_no, mclk_pin->gpio_name);
+	pr_debug("%s gpio = %d, gpio_name = %s ret = %d\n", __func__,
+		mclk_pin->gpio_no, mclk_pin->gpio_name, ret);
+	if (ret)
+		pr_err("%s Failed to request mclk gpio\n", __func__);
+
+err:
+	return ret;
+}
+
+static int msm_mi2s_free_gpios(struct msm_mi2s_ctrl *mi2s_ctrl)
+{
+	struct msm_mi2s_gpio *pin_data = NULL;
+	int i;
+	int ret = 0;
+
+	if (mi2s_ctrl == NULL || mi2s_ctrl->pin_data == NULL) {
+		pr_err("%s: Invalid control data for MI2S\n", __func__);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	pin_data = mi2s_ctrl->pin_data;
+	for (i = 0; i < mi2s_ctrl->cnt; i++, pin_data++) {
+		gpio_free(pin_data->gpio_no);
+		pr_debug("%s: gpio = %d, gpio_name = %s\n",
+			  __func__, pin_data->gpio_no,
+			  pin_data->gpio_name);
+	}
+err:
+	return ret;
+}
+
+static int msm_mi2s_free_mclk_gpio(struct msm_mi2s_gpio *mclk_pin)
+{
+	int ret = 0;
+
+	if (mclk_pin == NULL) {
+		pr_err("%s: Invalid mclk pin infor for MI2S\n", __func__);
+		ret = -EINVAL;
+		goto err;
+	}
+	gpio_free(mclk_pin->gpio_no);
+err:
+	return ret;
+}
+
+static int msm8974_mi2s_clk_ctl(struct snd_soc_pcm_runtime *rtd, bool enable)
+{
+	struct snd_soc_card *card = rtd->card;
+	struct msm8974_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+	struct afe_clk_cfg *lpass_clk = NULL;
+	int ret = 0;
+
+	if (pdata == NULL) {
+		pr_err("%s:platform data is null\n", __func__);
+		return -ENOMEM;
+	}
+	lpass_clk = kzalloc(sizeof(struct afe_clk_cfg), GFP_KERNEL);
+	if (lpass_clk == NULL) {
+		pr_err("%s:Failed to allocate memory\n", __func__);
+		return -ENOMEM;
+	}
+	memcpy(lpass_clk, &lpass_default, sizeof(struct afe_clk_cfg));
+	pr_debug("%s:enable = %x\n", __func__, enable);
+	if (enable) {
+		if (pdata->sec_clk_usrs == 0) {
+			lpass_clk->clk_val2 = Q6AFE_LPASS_OSR_CLK_12_P288_MHZ;
+			lpass_clk->clk_val1 = Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+			lpass_clk->clk_set_mode = Q6AFE_LPASS_MODE_BOTH_VALID;
+		} else
+			lpass_clk->clk_set_mode = Q6AFE_LPASS_MODE_CLK1_VALID;
+		ret =
+		   afe_set_lpass_clock(AFE_PORT_ID_SECONDARY_MI2S_RX, lpass_clk);
+		if (ret < 0)
+			pr_err("%s:afe_set_lpass_clock failed\n", __func__);
+		else
+			pdata->sec_clk_usrs++;
+	} else {
+		if (pdata->sec_clk_usrs > 0)
+			pdata->sec_clk_usrs--;
+		if (pdata->sec_clk_usrs == 0) {
+			lpass_clk->clk_val2 = Q6AFE_LPASS_OSR_CLK_DISABLE;
+			lpass_clk->clk_set_mode = Q6AFE_LPASS_MODE_BOTH_VALID;
+		} else
+			lpass_clk->clk_set_mode = Q6AFE_LPASS_MODE_CLK1_VALID;
+		lpass_clk->clk_val1 = Q6AFE_LPASS_IBIT_CLK_DISABLE;
+		ret =
+		   afe_set_lpass_clock(AFE_PORT_ID_SECONDARY_MI2S_RX, lpass_clk);
+		if (ret < 0)
+			pr_err("%s:afe_set_lpass_clock failed\n", __func__);
+	}
+	pr_debug("%s: clk 1 = %x clk2 = %x mode = %x\n",
+			 __func__, lpass_clk->clk_val1,
+			lpass_clk->clk_val2,
+			lpass_clk->clk_set_mode);
+	kfree(lpass_clk);
+	return ret;
+}
+
+static int msm_mi2s_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct msm8974_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+	struct msm_mi2s_ctrl *mi2s_ctrl = NULL;
+	int ret = 0;
+
+	pr_debug("%s(): substream = %s, mi2s_ref_count = %d\n",
+		 __func__, substream->name, atomic_read(&mi2s_ref_count));
+
+	mi2s_ctrl = pdata->mi2s_ctrl;
+
+	if (atomic_inc_return(&mi2s_ref_count) == 1) {
+		ret = msm_mi2s_get_gpios(mi2s_ctrl);
+		if (ret < 0) {
+			pr_err("%s: MI2S GPIO request failed\n", __func__);
+			return -EINVAL;
+		}
+		if((int)(pdata->mclk_pin->gpio_no) >= 0) {
+			ret = msm_mi2s_get_mclk_gpio(pdata->mclk_pin);
+			if (ret < 0)
+				pr_err("%s MI2S MCLK GPIO request failed\n", __func__);
+		}
+
+		ret = msm8974_mi2s_clk_ctl(rtd, true);
+		if (ret < 0) {
+			pr_err("Setting mclk control failed\n");
+			return ret;
+		}
+		/* This sets the CONFIG PARAMETER WS_SRC.
+		 * 1 means internal clock master mode.
+		 * 0 means external clock slave mode.
+		*/
+		ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_CBS_CFS);
+		if (ret < 0)
+			pr_err("set fmt cpu dai failed\n");
+	}
+
+	return ret;
+}
+
+static void msm_mi2s_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct msm8974_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+	struct msm_mi2s_ctrl *mi2s_ctrl = NULL;
+	struct msm_mi2s_gpio *mclk_pin;
+
+	int ret;
+
+	pr_debug("%s(): substream = %s, mi2s_ref_count = %d\n",
+		 __func__, substream->name, atomic_read(&mi2s_ref_count));
+
+	mi2s_ctrl = pdata->mi2s_ctrl;
+	mclk_pin = pdata->mclk_pin;
+
+	if (atomic_dec_return(&mi2s_ref_count) == 0) {
+		msm_mi2s_free_gpios(mi2s_ctrl);
+		ret = msm8974_mi2s_clk_ctl(rtd, false);
+		if (ret < 0)
+			pr_err("%s Clock disable failed\n", __func__);
+		if((int)(mclk_pin->gpio_no) >= 0) {
+			msm_mi2s_free_mclk_gpio(mclk_pin);
+		}
+	}
+}
+
+static struct snd_soc_ops msm8974_mi2s_be_ops = {
+	.startup = msm_mi2s_startup,
+	.shutdown = msm_mi2s_shutdown,
+};
+
 static int msm_slim_0_rx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					    struct snd_pcm_hw_params *params)
 {
@@ -1365,6 +1898,25 @@ static int msm_slim_5_tx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 		       __func__, rc);
 		return rc;
 	}
+
+	return 0;
+}
+
+static int msm_mi2s_rx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+				struct snd_pcm_hw_params *params)
+{
+	struct snd_interval *rate = hw_param_interval(params,
+					SNDRV_PCM_HW_PARAM_RATE);
+	struct snd_interval *channels = hw_param_interval(params,
+					SNDRV_PCM_HW_PARAM_CHANNELS);
+
+	pr_debug("%s()\n", __func__);
+	rate->min = rate->max = 48000;
+
+	param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
+				SNDRV_PCM_FORMAT_S16_LE);
+	/* Set MI2S channel to mono */
+	channels->min = channels->max = 1;
 
 	return 0;
 }
@@ -1538,6 +2090,9 @@ static int msm8974_taiko_event_cb(struct snd_soc_codec *codec,
 	}
 }
 
+#ifdef CONFIG_SND_SOC_FIH_HEADSET
+extern int fih_hs_detect(struct snd_soc_codec *codec);
+#endif
 static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 {
 	int err;
@@ -1582,6 +2137,15 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		return err;
 	}
 
+#ifdef FIH_AMPLIFIER
+	err = msm8974_viana_ext_spk_hph_power_amp_init();
+	if (err) {
+		pr_err("%s: Viana PAs init failed (%d)\n",
+			__func__, err);
+		return err;
+	}
+#endif
+
 	snd_soc_dapm_new_controls(dapm, msm8974_dapm_widgets,
 				ARRAY_SIZE(msm8974_dapm_widgets));
 
@@ -1589,6 +2153,10 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_enable_pin(dapm, "Lineout_3 amp");
 	snd_soc_dapm_enable_pin(dapm, "Lineout_2 amp");
 	snd_soc_dapm_enable_pin(dapm, "Lineout_4 amp");
+#ifdef FIH_AMPLIFIER
+	snd_soc_dapm_enable_pin(dapm, "Headphone amp");
+	snd_soc_dapm_enable_pin(dapm, "Ear amp");
+#endif
 
 
 	snd_soc_dapm_sync(dapm);
@@ -1632,6 +2200,12 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 			return err;
 		}
 	}
+#ifdef CONFIG_SND_SOC_FIH_HEADSET
+	fih_hs_detect(codec);
+
+	/* Do not register same switch device in mbhc driver */
+	mbhc_cfg.legacy_report = false;
+#endif
 	/* start mbhc */
 	mbhc_cfg.calibration = def_taiko_mbhc_cal();
 	if (mbhc_cfg.calibration) {
@@ -1716,6 +2290,24 @@ void *def_taiko_mbhc_cal(void)
 	btn_low = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_V_BTN_LOW);
 	btn_high = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg,
 					       MBHC_BTN_DET_V_BTN_HIGH);
+#ifdef FIH_MBHC_KEYCODE
+	btn_low[0] = -50;
+	btn_high[0] = 149;
+	btn_low[1] = 150;
+	btn_high[1] = 419;
+	btn_low[2] = 420;
+	btn_high[2] = 800;
+	btn_low[3] = 900;
+	btn_high[3] = 950;
+	btn_low[4] = 900;
+	btn_high[4] = 950;
+	btn_low[5] = 900;
+	btn_high[5] = 950;
+	btn_low[6] = 900;
+	btn_high[6] = 950;
+	btn_low[7] = 900;
+	btn_high[7] = 950;
+#else
 	btn_low[0] = -50;
 	btn_high[0] = 20;
 	btn_low[1] = 21;
@@ -1732,6 +2324,7 @@ void *def_taiko_mbhc_cal(void)
 	btn_high[6] = 269;
 	btn_low[7] = 270;
 	btn_high[7] = 500;
+#endif
 	n_ready = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_N_READY);
 	n_ready[0] = 80;
 	n_ready[1] = 68;
@@ -2567,6 +3160,20 @@ static struct snd_soc_dai_link msm8974_common_dai_links[] = {
 		.ignore_suspend = 1,
 	},
 
+	/* MI2S Backend DAI Links */
+	{
+		.name = LPASS_BE_SEC_MI2S_RX,
+		.stream_name = "Secondary MI2S Playback",
+		.cpu_dai_name = "msm-dai-q6-mi2s.1",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_SECONDARY_MI2S_RX,
+		.be_hw_params_fixup = msm_mi2s_rx_be_hw_params_fixup,
+		.ops = &msm8974_mi2s_be_ops,
+		.ignore_suspend = 1,
+	},
 	/* Backend DAI Links */
 	{
 		.name = LPASS_BE_SLIMBUS_0_RX,
@@ -2823,6 +3430,93 @@ err:
 	return ret;
 }
 
+static int msm8974_dtparse_mi2s(struct platform_device *pdev,
+				struct msm8974_asoc_mach_data **pdata,
+				struct msm_mi2s_ctrl **mi2s_ctrl,
+				char *msm_mi2s_gpio_name[][2])
+{
+	int ret = 0;
+	int i = 0;
+	struct msm_mi2s_gpio *pin_data = NULL;
+	struct msm_mi2s_ctrl *ctrl;
+	struct msm_mi2s_gpio *mclk_pin = NULL;
+	unsigned int gpio_no[NUM_OF_MI2S_GPIOS];
+	enum of_gpio_flags flags = OF_GPIO_ACTIVE_LOW;
+	int sec_cnt = 0;
+	unsigned int dt_mclk = 0;
+
+	pr_err("%s enter\n", __func__);
+	pin_data = devm_kzalloc(&pdev->dev, (ARRAY_SIZE(gpio_no) *
+				sizeof(struct msm_mi2s_gpio)),
+				GFP_KERNEL);
+	mclk_pin = devm_kzalloc(&pdev->dev,
+				sizeof(struct msm_mi2s_gpio),
+				GFP_KERNEL);
+
+	if (!pin_data || !mclk_pin) {
+		dev_err(&pdev->dev, "No memory for gpio\n");
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(gpio_no); i++) {
+		gpio_no[i] = of_get_named_gpio_flags(pdev->dev.of_node,
+				msm_mi2s_gpio_name[i][DT_PARSE_INDEX],
+				0, &flags);
+
+		if (gpio_no[i] > 0) {
+			pin_data[i].gpio_name =
+				msm_mi2s_gpio_name[sec_cnt][GPIO_NAME_INDEX];
+			pin_data[i].gpio_no = gpio_no[i];
+			pr_err("%s:GPIO gpio[%s] =0x%x\n", __func__, pin_data[i].gpio_name, pin_data[i].gpio_no);
+			sec_cnt++;
+		} else {
+			dev_err(&pdev->dev, "%s:Invalid MI2S GPIO[%s]= %x\n",
+				__func__,
+				msm_mi2s_gpio_name[i][GPIO_NAME_INDEX],
+				gpio_no[i]);
+			ret = -ENODEV;
+			goto err;
+		}
+	}
+	for (i = 0; i < ARRAY_SIZE(msm_mclk_gpio); i++) {
+		dt_mclk = of_get_named_gpio_flags(pdev->dev.of_node,
+				msm_mclk_gpio[i][DT_PARSE_INDEX], 0,
+				&flags);
+		if (dt_mclk > 0) {
+			mclk_pin->gpio_name =
+				msm_mclk_gpio[i][GPIO_NAME_INDEX];
+			mclk_pin->gpio_no = dt_mclk;
+		} else {
+			dev_err(&pdev->dev, "%s:MCLK gpio is incorrect\n",
+				__func__);
+			ret = -ENODEV;
+			goto err;
+		}
+	}
+	ctrl = devm_kzalloc(&pdev->dev,
+				sizeof(struct msm_mi2s_ctrl), GFP_KERNEL);
+	if (!ctrl) {
+		dev_err(&pdev->dev, "No memory for gpio\n");
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	ctrl->pin_data = pin_data;
+	ctrl->cnt = sec_cnt;
+	(*pdata)->mi2s_ctrl = ctrl;
+	(*pdata)->mclk_pin = mclk_pin;
+	return ret;
+
+err:
+	pr_err("%s error\n", __func__);
+	if (pin_data)
+		devm_kfree(&pdev->dev, pin_data);
+	if (mclk_pin)
+		devm_kfree(&pdev->dev, mclk_pin);
+	return ret;
+}
+
 static int msm8974_prepare_codec_mclk(struct snd_soc_card *card)
 {
 	struct msm8974_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
@@ -2998,6 +3692,15 @@ static __devinit int msm8974_asoc_machine_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	/* Parse MI2S info from DT */
+	ret = msm8974_dtparse_mi2s(pdev, &pdata, &pdata->mi2s_ctrl,
+					msm_mi2s_gpio_name);
+	if (ret) {
+		dev_err(&pdev->dev,
+		"%s: MI2S pin data parse failed\n", __func__);
+		//goto err;
+	}
+
 	/* Parse Secondary AUXPCM info from DT */
 	ret = msm8974_dtparse_auxpcm(pdev, &pdata->sec_auxpcm_ctrl,
 					msm_sec_auxpcm_gpio_name);
@@ -3090,6 +3793,9 @@ static __devinit int msm8974_asoc_machine_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto err2;
 	}
+
+	fih_ext_spk_amp_init();
+
 	return 0;
 
 err2:
@@ -3105,6 +3811,7 @@ err:
 		gpio_free(pdata->mclk_gpio);
 		pdata->mclk_gpio = 0;
 	}
+	pdata->mclk_freq = 0;
 	if (pdata->us_euro_gpio > 0) {
 		dev_dbg(&pdev->dev, "%s free us_euro gpio %d\n",
 			__func__, pdata->us_euro_gpio);

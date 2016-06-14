@@ -1,0 +1,71 @@
+FocalTech touch controller
+
+The focaltech controller is connected to host processor
+via i2c. The controller generates interrupts when the
+user touches the panel. The host controller is expected
+to read the touch coordinates over i2c and pass the coordinates
+to the rest of the system.
+
+Required properties:
+
+ - compatible		: should be "focaltech,5406"
+ - reg			: i2c slave address of the device
+ - interrupt-parent	: parent of interrupt
+ - interrupts		: touch sample interrupt to indicate presense or release
+				of fingers on the panel.
+ - vdd_enable		: Power enable pin needed to power up the device
+ - vcc_i2c-supply	: Power source required to power up i2c bus
+
+Optional properties:
+
+ - focaltech,name	: name of the controller
+ - focaltech,reset-gpio	: reset gpio to control the reset of chip
+ - focaltech,irq-gpio	: irq gpio which is to provide interrupts to host,
+				same as "interrupts" node. It will also
+				contain active low or active high information.
+ - focaltech,family-id	: family identification of the controller
+ - focaltech,display-coords : display coordinates in pixels. It is a four
+				tuple consisting of min x, min y, max x and
+				max y values
+ - focaltech,fw-name	: Specify the firmware file name
+ - focaltech,hard-reset-delay-ms	: reset timing between pull low and high (ms)
+ - focaltech,soft-reset-delay-ms	: wait timing after reset chip (ms)
+ - focaltech,num-max-touches	: This chip support how many touch event
+ - focaltech,fw-delay-aa-ms : The delay timing after write 0xaa at register when upgrade firmware (ms)
+ - focaltech,fw-delay-55-ms : The delay timing after write 0x55 at register when upgrade firmware (ms)
+ - focaltech,fw-upgrade-id1 : The id1 will be read to check chip already go into bootloader mode
+ - focaltech,fw-upgrade-id2 : The id2 will be read to check chip already go into bootloader mode
+ - focaltech,fw-delay-readid-ms : The delay timing before read id1 and id2
+ - focaltech,fw-delay-era-flsh-ms : The delay timing of erase flash data
+ - focaltech,fw-auto-cal : This chip support auto calibration or not
+ - focaltech,vcc-i2c-always-on: The vcc_i2c pin is always on or not,
+				if it is always on, the "vcc_i2c-supply" term can be ignored and we need not to control the vcc_i2c pin in the driver
+
+Example:
+	i2c@f9923000{
+		focaltech,touch@38 {
+			compatible = "focaltech,5406";
+			reg = <0x38>;
+			interrupt-parent = <&msmgpio>;
+			interrupts = <59 0x2>;
+			vdd_enable = <&pm8941_gpios 1 1>;
+			vcc_i2c-supply = <&pm8941_lvs1>;
+			focaltech,name = "ft5406";
+			focaltech,family-id = <0x55>;
+			focaltech,reset-gpio = <&msmgpio 60 0x00>;
+			focaltech,irq-gpio = <&msmgpio 59 0x00>;
+			focaltech,display-coords = <0 0 1080 1920>;
+			focaltech,panel-coords = <0 0 1080 2000>;
+			focaltech,fw-name = "ft5x06_fw_0D.bin";
+			focaltech,hard-reset-delay-ms = <3>;
+			focaltech,soft-reset-delay-ms = <197>;
+			focaltech,num-max-touches = <5>;
+			focaltech,fw-delay-aa-ms = <50>;
+			focaltech,fw-delay-55-ms = <30>;
+			focaltech,fw-upgrade-id1 = <0x79>;
+			focaltech,fw-upgrade-id2 = <0x03>;
+			focaltech,fw-delay-readid-ms = <10>;
+			focaltech,fw-delay-era-flsh-ms = <2000>;
+			focaltech,fw-auto-cal;
+		};
+	};

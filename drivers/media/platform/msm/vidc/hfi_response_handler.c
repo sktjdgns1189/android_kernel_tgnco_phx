@@ -251,6 +251,10 @@ static void hfi_process_event_notify(
 	case HFI_EVENT_SYS_ERROR:
 		dprintk(VIDC_ERR, "HFI_EVENT_SYS_ERROR: %d, 0x%x\n",
 			pkt->event_data1, pkt->event_data2);
+		#if (0)
+		/* PHXL-11733, case 02061287: for QC debug vidc and venus */
+		panic("SYS_ERROR from firmware is recieved");
+		#endif
 		hfi_process_sys_error(callback, device_id);
 		break;
 	case HFI_EVENT_SESSION_ERROR:

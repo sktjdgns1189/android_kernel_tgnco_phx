@@ -132,6 +132,23 @@ static int vdd_val[VDD_TYPE_MAX][VDD_VAL_MAX] = {
 		},
 };
 
+#ifdef CONFIG_BQ2419X_CHARGER
+static void set_charger_power_supply_value(int value, enum power_supply_property psp)
+{
+	union power_supply_propval ret = {value,};
+	struct power_supply *chg_psy = NULL;
+
+	chg_psy = power_supply_get_by_name("wall");
+	if (!chg_psy) {
+		pr_err("%s: Unable to get charger power_supply\n", __func__);
+		return;
+	}
+
+	if (chg_psy->set_property)
+		chg_psy->set_property(chg_psy, psp, &ret);
+}
+#endif
+
 static int msm_hsusb_ldo_init(struct msm_otg *motg, int init)
 {
 	int rc = 0;
@@ -1285,8 +1302,12 @@ skip_phy_resume:
 static void msm_otg_notify_host_mode(struct msm_otg *motg, bool host_mode)
 {
 	if (!psy) {
-		pr_err("No USB power supply registered!\n");
+		/* Enhance this function to get usb power supply again */
+		psy = power_supply_get_by_name("usb");
+		if (!psy) {
+			pr_err("couldn't get usb power supply\n");
 		return;
+		}
 	}
 
 	if (legacy_power_supply) {
@@ -1308,6 +1329,12 @@ static void msm_otg_notify_host_mode(struct msm_otg *motg, bool host_mode)
 	} else {
 		motg->host_mode = host_mode;
 		power_supply_changed(psy);
+#ifdef CONFIG_BQ2419X_CHARGER
+		if (host_mode)
+			set_charger_power_supply_value(POWER_SUPPLY_SCOPE_SYSTEM, POWER_SUPPLY_PROP_SCOPE);
+		else
+			set_charger_power_supply_value(POWER_SUPPLY_SCOPE_DEVICE, POWER_SUPPLY_PROP_SCOPE);
+#endif
 	}
 }
 
@@ -1351,8 +1378,12 @@ static int msm_otg_notify_chg_type(struct msm_otg *motg)
 static int msm_otg_notify_power_supply(struct msm_otg *motg, unsigned mA)
 {
 	if (!psy) {
+		/* Enhance this function to get usb power supply again */
+		psy = power_supply_get_by_name("usb");
+		if (!psy) {
 		dev_dbg(motg->phy.dev, "no usb power supply registered\n");
 		goto psy_error;
+		}
 	}
 
 	if (motg->cur_power == 0 && mA > 2) {
@@ -3790,6 +3821,9 @@ static int otg_power_set_property_usb(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		psy->type = val->intval;
+#ifdef CONFIG_BQ2419X_CHARGER
+		set_charger_power_supply_value(val->intval, POWER_SUPPLY_PROP_TYPE);
+#endif
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		motg->usbin_health = val->intval;
@@ -4858,7 +4892,6 @@ static int __devexit msm_otg_remove(struct platform_device *pdev)
 
 	if (pdev->dev.of_node)
 		msm_otg_setup_devices(pdev, motg->pdata->mode, false);
-	if (motg->pdata->otg_control == OTG_PMIC_CONTROL)
 		pm8921_charger_unregister_vbus_sn(0);
 	msm_otg_mhl_register_callback(motg, NULL);
 	msm_otg_debugfs_cleanup();

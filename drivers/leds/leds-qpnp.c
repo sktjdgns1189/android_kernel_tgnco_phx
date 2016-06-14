@@ -1438,6 +1438,7 @@ static int qpnp_rgb_set(struct qpnp_led_data *led)
 {
 	int rc;
 	int duty_us, duty_ns, period_us;
+	pr_info("[%s] name:%s\n", __func__, led->cdev.name);
 
 	if (led->cdev.brightness) {
 		if (!led->rgb_cfg->pwm_cfg->blinking)
@@ -1504,8 +1505,11 @@ static void qpnp_led_set(struct led_classdev *led_cdev,
 				enum led_brightness value)
 {
 	struct qpnp_led_data *led;
-
+	int rc;
 	led = container_of(led_cdev, struct qpnp_led_data, cdev);
+
+	pr_info("[%s] name:%s, value:%d\n", __func__, led->cdev.name, (int)value);
+
 	if (value < LED_OFF) {
 		dev_err(&led->spmi_dev->dev, "Invalid brightness value\n");
 		return;
@@ -1515,10 +1519,25 @@ static void qpnp_led_set(struct led_classdev *led_cdev,
 		value = led->cdev.max_brightness;
 
 	led->cdev.brightness = value;
+	if((led->id ==QPNP_ID_RGB_RED) || (led->id ==QPNP_ID_RGB_GREEN) || (led->id ==QPNP_ID_RGB_BLUE))
+	{
+		mutex_lock(&led->lock);
+		rc = qpnp_rgb_set(led);
+		if (rc < 0)
+			dev_err(&led->spmi_dev->dev,
+				"RGB set brightness failed (%d). ID=%d \n", rc, led->id);
+		mutex_unlock(&led->lock);
+	}
+	else
+	{
+	schedule_work(&led->work);
+	}
+#if 0
 	if (led->in_order_command_processing)
 		queue_work(led->workqueue, &led->work);
 	else
 		schedule_work(&led->work);
+#endif
 }
 
 static void __qpnp_led_work(struct qpnp_led_data *led,
@@ -1597,9 +1616,13 @@ static int __devinit qpnp_led_set_max_brightness(struct qpnp_led_data *led)
 		led->cdev.max_brightness = led->max_current;
 		break;
 	case QPNP_ID_RGB_RED:
+		led->cdev.max_brightness = 10;
+		break;
 	case QPNP_ID_RGB_GREEN:
+		led->cdev.max_brightness = 15;
+		break;
 	case QPNP_ID_RGB_BLUE:
-		led->cdev.max_brightness = RGB_MAX_LEVEL;
+		led->cdev.max_brightness = 20;
 		break;
 	case QPNP_ID_LED_MPP:
 		if (led->mpp_cfg->pwm_mode == MANUAL_MODE)
@@ -1866,7 +1889,7 @@ static int qpnp_pwm_init(struct pwm_config_data *pwm_cfg,
 
 			if (idx_len >= lut_max_size && start_idx) {
 				dev_err(&spmi_dev->dev,
-					"Wrong LUT size or index\n");
+					"Wrong LUT size or index, idx_len=%d\n", idx_len);
 				return -EINVAL;
 			}
 
@@ -2132,6 +2155,8 @@ static ssize_t ramp_step_ms_store(struct device *dev,
 		return ret;
 	led = container_of(led_cdev, struct qpnp_led_data, cdev);
 
+	pr_info("[%s] name:%s, ramp:%d\n", __func__, led->cdev.name, ramp_step_ms);
+
 	switch (led->id) {
 	case QPNP_ID_LED_MPP:
 		pwm_cfg = led->mpp_cfg->pwm_cfg;
@@ -2155,6 +2180,8 @@ static ssize_t ramp_step_ms_store(struct device *dev,
 
 	previous_ramp_step_ms = pwm_cfg->lut_params.ramp_step_ms;
 
+	pwm_cfg->lut_params.ramp_step_ms = ramp_step_ms;
+/*
 	pwm_free(pwm_cfg->pwm_dev);
 	pwm_cfg->lut_params.ramp_step_ms = ramp_step_ms;
 	ret = qpnp_pwm_init(pwm_cfg, led->spmi_dev, led->cdev.name);
@@ -2168,6 +2195,7 @@ static ssize_t ramp_step_ms_store(struct device *dev,
 		return ret;
 	}
 	qpnp_led_set(&led->cdev, led->cdev.brightness);
+*/
 	return count;
 }
 
@@ -2282,8 +2310,8 @@ static ssize_t duty_pcts_store(struct device *dev,
 
 	if (num_duty_pcts >= max_duty_pcts) {
 		dev_err(&led->spmi_dev->dev,
-			"Number of duty pcts given exceeds max (%d)\n",
-			max_duty_pcts);
+			"Number of duty pcts given exceeds max (%d), size = %d\n",
+			max_duty_pcts, num_duty_pcts);
 		return -EINVAL;
 	}
 
@@ -2294,15 +2322,16 @@ static ssize_t duty_pcts_store(struct device *dev,
 	pwm_cfg->duty_cycles->duty_pcts = pwm_cfg->old_duty_pcts;
 	pwm_cfg->old_duty_pcts = previous_duty_pcts;
 	pwm_cfg->lut_params.idx_len = pwm_cfg->duty_cycles->num_duty_pcts;
-
+/*
 	pwm_free(pwm_cfg->pwm_dev);
 	ret = qpnp_pwm_init(pwm_cfg, led->spmi_dev, led->cdev.name);
 	if (ret)
 		goto restore;
 
 	qpnp_led_set(&led->cdev, led->cdev.brightness);
+*/
 	return count;
-
+/*
 restore:
 	dev_err(&led->spmi_dev->dev,
 		"Failed to initialize pwm with new duty pcts value\n");
@@ -2314,6 +2343,7 @@ restore:
 	qpnp_pwm_init(pwm_cfg, led->spmi_dev, led->cdev.name);
 	qpnp_led_set(&led->cdev, led->cdev.brightness);
 	return ret;
+*/
 }
 
 static void led_blink(struct qpnp_led_data *led,
@@ -2341,7 +2371,9 @@ static void led_blink(struct qpnp_led_data *led,
 						pwm_cfg->default_mode;
 		}
 		pwm_free(pwm_cfg->pwm_dev);
+		msleep(10);
 		qpnp_pwm_init(pwm_cfg, led->spmi_dev, led->cdev.name);
+		msleep(10);
 		if (led->id == QPNP_ID_RGB_RED || led->id == QPNP_ID_RGB_GREEN
 				|| led->id == QPNP_ID_RGB_BLUE) {
 			rc = qpnp_rgb_set(led);
@@ -2377,6 +2409,8 @@ static ssize_t blink_store(struct device *dev,
 		return ret;
 	led = container_of(led_cdev, struct qpnp_led_data, cdev);
 	led->cdev.brightness = blinking ? led->cdev.max_brightness : 0;
+
+	pr_info("[%s] name:%s, blink:%ld\n", __func__, led->cdev.name, blinking);
 
 	switch (led->id) {
 	case QPNP_ID_LED_MPP:

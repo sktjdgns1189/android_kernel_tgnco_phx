@@ -362,7 +362,21 @@ struct mdss_panel_data {
 	struct mdss_panel_info panel_info;
 	void (*set_backlight) (struct mdss_panel_data *pdata, u32 bl_level);
 	unsigned char *mmss_cc_base;
-
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	int (*set_cabc) (struct mdss_panel_data *pdata);
+	int cabc_token;
+#endif
+	int cabc_setting;
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	int (*set_color_temperature) (struct mdss_panel_data *pdata);
+	char color_temperature[5];
+	int mipi_reg;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_MODE
+	int (*set_color_mode) (struct mdss_panel_data *pdata);
+#endif
+	int color_mode;
+	int color_mode_on;
 	/**
 	 * event_handler() - callback handler for MDP core events
 	 * @pdata:	Pointer refering to the panel struct associated to this

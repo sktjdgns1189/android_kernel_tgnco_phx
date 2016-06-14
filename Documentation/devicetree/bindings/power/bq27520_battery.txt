@@ -1,0 +1,53 @@
+TI BQ27520 Battery Gas Gauge
+
+The bq27520 monitors the battery temperature, capacity, voltage, current etc.
+The device interface is I2C, its I2C slave 7-bit address is 0x55.
+
+Required properties:
+
+ - status: "okay" or "disabled" for this feature
+ - compatible : Must be "ti,bq27520"
+ - reg : I2C Address must be 0x55.
+
+Optional properties:
+
+ - interrupt-parent :	Interrupt gpio group parent.
+
+ - interrupts :		Specific gpio for interrupt, it should be same as soc_gpio.
+
+ - bq27520,rom_addr :	ROM address for flash firmware, it must be 0xB if needed.
+
+ - bq27520,soc_gpio :	Open-drain output pin, indicates SOC state interrupt.
+
+ - bq27520,blo_gpio :	Push-pull output pin, low battery indicator, default: active high.
+
+ - bq27520,bgd_gpio :	Push-pull output pin, good battery indicator, default: active low.
+
+ - bq27520,dffs_ver :	Set which version dffs to use, 0:BP5, 1:BP8, 2:VNA, 3:MO7, 4:BPC, 5:VN2
+
+ - bq27520,design_vol :	Designed max battery voltage (mV), default: 4200
+
+ - bq27520,use-batt-id:	Boolean value to decide get batt id or not.
+
+ - bq27520,wrtemp :	Boolean value to decide the temperature is expected to written by the host or external thermistor.
+
+ - qcom,batid-vadc :	When usb-batt-id is set, we need assign the vadc phandle to use.
+
+Example:
+&i2c_0 {
+	bq27520@55 {
+		status = "okay";
+		reg = <0x55>;
+		compatible = "ti,bq27520";
+		interrupt-parent = <&msmgpio>;
+		interrupts = <77 0x2>;
+		bq27520,rom_addr = <0xB>;
+		bq27520,soc_gpio = <&msmgpio 77 0x00>;
+		bq27520,blo_gpio = <&pm8941_gpios 14 0x1>;
+		bq27520,bgd_gpio = <&pm8941_gpios 13 0x1>;
+		bq27520,dffs_ver = <2>;
+		bq27520,design_vol = <4350>;
+		bq27520,use-batt-id;
+		qcom,batid-vadc = <&pm8941_vadc>;
+	};
+};

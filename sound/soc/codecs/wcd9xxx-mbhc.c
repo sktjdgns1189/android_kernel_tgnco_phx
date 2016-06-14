@@ -75,7 +75,7 @@
 #define OCP_ATTEMPT 1
 
 #define FW_READ_ATTEMPTS 15
-#define FW_READ_TIMEOUT 4000000
+#define FW_READ_TIMEOUT 2000000
 
 #define BUTTON_POLLING_SUPPORTED true
 
@@ -101,7 +101,8 @@
  * of plug type with current source
  */
 #define WCD9XXX_CS_MEAS_INVALD_RANGE_LOW_MV 160
-#define WCD9XXX_CS_MEAS_INVALD_RANGE_HIGH_MV 265
+/* Remove the invalid range of headset */
+#define WCD9XXX_CS_MEAS_INVALD_RANGE_HIGH_MV 160
 
 /*
  * Threshold used to detect euro headset
@@ -120,7 +121,7 @@
 /* RX_HPH_CNP_WG_TIME increases by 0.24ms */
 #define WCD9XXX_WG_TIME_FACTOR_US	240
 
-#define WCD9XXX_V_CS_HS_MAX 500
+#define WCD9XXX_V_CS_HS_MAX 1000
 #define WCD9XXX_V_CS_NO_MIC 5
 #define WCD9XXX_MB_MEAS_DELTA_MAX_MV 80
 #define WCD9XXX_CS_MEAS_DELTA_MAX_MV 12
@@ -575,6 +576,24 @@ static void wcd9xxx_jack_report(struct wcd9xxx_mbhc *mbhc,
 						WCD9XXX_COND_HPH,
 						status & SND_JACK_HEADPHONE);
 	}
+
+#ifdef FIH_LEGACY_HEADSET_REPORT
+	if (mbhc->legacy_report != false) {
+		if (jack == &mbhc->headset_jack) {
+			if ((status & SND_JACK_HEADPHONE) && (status & SND_JACK_MICROPHONE))
+				switch_set_state(&mbhc->sdev_insert, 1);
+			else if (status & SND_JACK_HEADPHONE)
+				switch_set_state(&mbhc->sdev_insert, 2);
+			else
+				switch_set_state(&mbhc->sdev_insert, 0);
+		} else if (jack == &mbhc->button_jack) {
+			if (status != 0)
+				switch_set_state(&mbhc->sdev_button, 1);
+			else
+				switch_set_state(&mbhc->sdev_button, 0);
+		}
+	}
+#endif
 
 	snd_soc_jack_report_no_dapm(jack, status, mask);
 }
@@ -3339,7 +3358,7 @@ static int wcd9xxx_is_false_press(struct wcd9xxx_mbhc *mbhc)
 			mb_v = wcd9xxx_codec_sta_dce(mbhc, 0, true);
 			pr_debug("%s: STA[0]: %d,%d\n", __func__, mb_v,
 				 wcd9xxx_codec_sta_dce_v(mbhc, 0, mb_v));
-			if (mb_v < v_b1_hu || mb_v > v_ins_hu) {
+			if (mb_v < v_b1_hu || mb_v > (v_ins_hu+1800)) {
 				r = 1;
 				break;
 			}
@@ -3347,7 +3366,7 @@ static int wcd9xxx_is_false_press(struct wcd9xxx_mbhc *mbhc)
 			mb_v = wcd9xxx_codec_sta_dce(mbhc, 1, true);
 			pr_debug("%s: DCE[%d]: %d,%d\n", __func__, i, mb_v,
 				 wcd9xxx_codec_sta_dce_v(mbhc, 1, mb_v));
-			if (mb_v < v_b1_h || mb_v > v_ins_h) {
+			if (mb_v < v_b1_h || mb_v > (v_ins_h+300)) {
 				r = 1;
 				break;
 			}
@@ -4422,6 +4441,23 @@ int wcd9xxx_mbhc_start(struct wcd9xxx_mbhc *mbhc,
 	/* Save mbhc config */
 	mbhc->mbhc_cfg = mbhc_cfg;
 
+#ifdef FIH_LEGACY_HEADSET_REPORT
+	if (mbhc->mbhc_cfg->legacy_report) {
+		mbhc->sdev_insert.name = "h2w";
+		rc = switch_dev_register(&mbhc->sdev_insert);
+		if (rc)
+			pr_err("%s: Fail to register switch device for headset\n", __func__);
+
+		mbhc->sdev_button.name = "btn";
+		rc = switch_dev_register(&mbhc->sdev_button);
+		if (rc)
+			pr_err("%s: Fail to register switch device for button\n", __func__);
+
+		mbhc->legacy_report = true;
+	} else
+		mbhc->legacy_report = false;
+#endif
+
 	/* Get HW specific mbhc registers' address */
 	wcd9xxx_get_mbhc_micbias_regs(mbhc, MBHC_PRIMARY_MIC_MB);
 
@@ -4914,8 +4950,10 @@ static int wcd9xxx_detect_impedance(struct wcd9xxx_mbhc *mbhc, uint32_t *zl,
 int wcd9xxx_mbhc_get_impedance(struct wcd9xxx_mbhc *mbhc, uint32_t *zl,
 			       uint32_t *zr)
 {
+	WCD9XXX_BCL_LOCK(mbhc->resmgr);
 	*zl = mbhc->zl;
 	*zr = mbhc->zr;
+	WCD9XXX_BCL_UNLOCK(mbhc->resmgr);
 
 	if (*zl && *zr)
 		return 0;

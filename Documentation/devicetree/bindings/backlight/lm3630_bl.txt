@@ -1,0 +1,25 @@
+* TI LM3630A High-Efficiency Dual-String White LED Driver
+
+Required properties:
+ - compatible: Should be "ti,lm3630"
+ - reg: Should contain registers location and length
+
+Optional properties:
+ - ti,max-brt-led:  maximum brightness, should less or equal than 0xFF
+ - ti,init-brt-led: initial brightness
+ - ti,pwm-ctrl: 0 for disable pwm input, 1 for enable
+ - ti,pwm-active: 0 for low active
+ - ti,hwen-gpio: enable pin
+ - ti,fs-current: full-scale current, refer to datasheet for setting
+
+Example:
+	lm3630_bl@36 {
+		compatible = "ti,lm3630";
+		reg = <0x36>;
+		ti,max-brt-led = <0xFF>;
+		ti,init-brt-led = <0xFF>;
+		ti,pwm-ctrl = <0x01>;
+		ti,pwm-active = <0x00>;
+		ti,hwen-gpio = <&pm8941_gpios 24 0x00>;
+		ti,fs-current = <0x14>;
+	};

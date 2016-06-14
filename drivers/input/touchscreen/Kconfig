@@ -11,6 +11,8 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
+source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
+
 config TOUCHSCREEN_88PM860X
 	tristate "Marvell 88PM860x touchscreen"
 	depends on MFD_88PM860X
@@ -958,6 +960,19 @@ config TOUCHSCREEN_FT5X06
          To compile this driver as a module, choose M here: the
          module will be called ft5x06_ts.
 
+config TOUCHSCREEN_FT5406
+	tristate "FocalTech touchscreens"
+	depends on I2C
+	help
+	 Say Y here if you have a ft5X06 touchscreen.
+	 Ft5x06 controllers are multi touch controllers which can
+	 report 5 touches at a time.
+
+	 If unsure, say N.
+
+	 To compile this driver as a module, choose M here: the
+	 module will be called ft5x06_ts.
+
 config TOUCHSCREEN_GEN_VKEYS
        tristate "Touchscreen Virtual Keys Driver"
        help
@@ -1019,6 +1034,42 @@ config SECURE_TOUCH
 	  driver.
 
 	  If unsure, say N.
+
+config TOUCHSCREEN_ITE7256
+	tristate "ITE7280 touchscreen"
+	depends on I2C
+	help
+	  Say Y here if you have a ITE I2C touchscreen
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called it7256_ts_i2c.
+
+config TOUCHSCREEN_ITE7263_BZL
+	tristate "ITE7263 smart bezel"
+	depends on I2C
+	help
+	  Say Y here if you have a ITE I2C smart bezel
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called it7263_ts_i2c_bzl.
+
+config TOUCHKEY_ITE7236
+	tristate "ITE7236 touchkey"
+	depends on I2C
+	help
+	  Say Y here if you have a ITE I2C touchscreen
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called it7236_ts_i2c.
 
 config TOUCHSCREEN_GT9XX
 	bool "Goodix touchpanel GT9xx series"

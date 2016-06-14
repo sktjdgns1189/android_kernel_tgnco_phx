@@ -330,6 +330,36 @@ DEFINE_EVENT(power_domain, power_domain_target,
 
 	TP_ARGS(name, state, cpu_id)
 );
+
+TRACE_EVENT(cpufreq_ondemand_cpuload,
+	    TP_PROTO(unsigned int cpu_id, unsigned int load),
+	    TP_ARGS(cpu_id,load),
+	    TP_STRUCT__entry(
+		    __field(unsigned int, cpu_id    )
+		    __field(unsigned int, load      )
+	    ),
+	    TP_fast_assign(
+		    __entry->cpu_id = cpu_id;
+		    __entry->load = load;
+	    ),
+	    TP_printk("cpu=%u load=%u",__entry->cpu_id, __entry->load)
+);
+TRACE_EVENT(cpufreq_suppression,
+	    TP_PROTO(unsigned int cpu_id, unsigned int maxfreq),
+	    TP_ARGS(cpu_id,maxfreq),
+	    TP_STRUCT__entry(
+		    __field(unsigned int, cpu_id  )
+		    __field(unsigned int, maxfreq )
+	    ),
+	    TP_fast_assign(
+		    __entry->cpu_id = cpu_id;
+		    __entry->maxfreq = maxfreq;
+	    ),
+	    TP_printk("cpu=%u maxfreq=%u", __entry->cpu_id, __entry->maxfreq)
+);
+
+
+
 #endif /* _TRACE_POWER_H */
 
 /* This part must be outside protection */

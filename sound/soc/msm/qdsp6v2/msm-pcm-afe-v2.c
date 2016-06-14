@@ -609,6 +609,8 @@ static int msm_afe_hw_params(struct snd_pcm_substream *substream,
 	dma_buf->addr = buf[0].phys;
 
 	dma_buf->bytes = params_buffer_bytes(params);
+	/* Align the buffer size to 4k */
+	dma_buf->bytes = ((dma_buf->bytes + 0xFFF) >> 12) << 12;
 
 	if (!dma_buf->area) {
 		pr_err("%s:MSM AFE physical memory allocation failed\n",

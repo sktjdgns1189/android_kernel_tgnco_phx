@@ -1,0 +1,81 @@
+Battery Protection drivers
+
+This is a software control driver for battery protection when temperature
+is too high or too low, then try to limit charge functionality to avoid
+to make battery demage
+
+Required properties:
+
+ - status: "okay" or "disabled" for this feature
+
+ - compatible : Must be "battery_protection"
+
+ - batt_protect,bat_name : The power-supply name for battery type, and
+				this is used to get battery temperature.
+
+ - batt_protect,chg_name : The power-supply name for charger type, and
+				this is used to set charger limitation.
+
+ - batt_protect,negative_offset : The negative offset for temperature threshold,
+					used to calculate the real temperature by sub function.
+
+Child node properties:
+
+ - action,type : Define this child for which range temperature,
+			0/1/2/3/4 means normal/hot/warm/cool/cold type, and temperature
+			value is T-hot > T-warm > T-normal > T-cool > T-cold
+
+ - action,enabled : Define this setting is used or not.
+
+ - action,temp_c : Define the temperature threshold, the unit is 0.1 degree C.
+
+ - action,vol_mv : Define the battery charge maximum voltage, the unit is mV.
+
+ - action,cur_ma : Define the battery charge maximum current, the unit is mA.
+			Note that if this value is 0, it means to disable charge feature.
+
+Example:
+&soc {
+	batt_protect {
+		status = "okay";
+		compatible = "battery_protection";
+		batt_protect,bat_name = "battery";
+		batt_protect,chg_name = "wall";
+		batt_protect,negative_offset = <0>;
+		batt_protect,normal {
+			action,type = <0>;
+			action,enabled = <1>;
+			action,temp_c = <0>;
+			action,vol_mv = <4352>;
+			action,cur_ma = <2048>;
+		};
+		batt_protect,hot {
+			action,type = <1>;
+			action,enabled = <1>;
+			action,temp_c = <550>;
+			action,vol_mv = <4352>;
+			action,cur_ma = <0>;
+		};
+		batt_protect,warm {
+			action,type = <2>;
+			action,enabled = <1>;
+			action,temp_c = <450>;
+			action,vol_mv = <4112>;
+			action,cur_ma = <2048>;
+		};
+		batt_protect,cool {
+			action,type = <3>;
+			action,enabled = <0>;
+			action,temp_c = <0>;
+			action,vol_mv = <0>;
+			action,cur_ma = <0>;
+		};
+		batt_protect,cold {
+			action,type = <4>;
+			action,enabled = <1>;
+			action,temp_c = <0>;
+			action,vol_mv = <4352>;
+			action,cur_ma = <0>;
+		};
+	};
+};

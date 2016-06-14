@@ -315,6 +315,7 @@ static int write_error_after_csw_sent;
 static int csw_hack_sent;
 #endif
 /*-------------------------------------------------------------------------*/
+static int g_fih_ums = 0;
 
 struct fsg_dev;
 struct fsg_common;
@@ -450,6 +451,21 @@ struct fsg_dev {
 
 	struct usb_ep		*bulk_in;
 	struct usb_ep		*bulk_out;
+};
+
+static struct usb_string ms_string_defs[] = {
+	[0].s       = "Android phone",
+	{  }, /* end of list */
+};
+
+static struct usb_gadget_strings ms_string_table = {
+	.language   = 0x0409, /* en-us */
+	.strings    = ms_string_defs,
+};
+
+static struct usb_gadget_strings *ms_strings[] = {
+	&ms_string_table,
+	NULL,
 };
 
 static inline int __fsg_is_set(struct fsg_common *common,
@@ -604,6 +620,15 @@ static void bulk_out_complete(struct usb_ep *ep, struct usb_request *req)
 	spin_unlock(&common->lock);
 }
 
+int fih_disable_ums(void)
+{
+	pr_debug("%s:%x\n",__func__,g_fih_ums);
+	if(g_fih_ums)
+		return 0;
+	else
+		return 1;
+}
+
 static int fsg_setup(struct usb_function *f,
 		     const struct usb_ctrlrequest *ctrl)
 {
@@ -650,7 +675,7 @@ static int fsg_setup(struct usb_function *f,
 				w_length != 1)
 			return -EDOM;
 		VDBG(fsg, "get max LUN\n");
-		*(u8 *)req->buf = fsg->common->nluns - 1;
+		*(u8 *)req->buf = fsg->common->nluns - 1 - fih_disable_ums();
 
 		/* Respond with data/status */
 		req->length = min((u16)1, w_length);
@@ -1398,6 +1423,10 @@ static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
 	int		msf = common->cmnd[1] & 0x02;
 	int		start_track = common->cmnd[6];
 	u8		*buf = (u8 *)bh->buf;
+#ifdef READ_TOC_SUPPORT_MAC_OS
+	u8	 	format;
+	int	 	ret;
+#endif
 
 	if ((common->cmnd[1] & ~0x02) != 0 ||	/* Mask away MSF */
 			start_track > 1) {
@@ -1405,6 +1434,7 @@ static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
 		return -EINVAL;
 	}
 
+#ifndef READ_TOC_SUPPORT_MAC_OS
 	memset(buf, 0, 20);
 	buf[1] = (20-2);		/* TOC data length */
 	buf[2] = 1;			/* First track number */
@@ -1417,6 +1447,27 @@ static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
 	buf[14] = 0xAA;			/* Lead-out track number */
 	store_cdrom_address(&buf[16], msf, curlun->num_sectors);
 	return 20;
+#else
+	/*
+	 * Check if CDB is old style SFF-8020i
+	 * i.e. format is in 2 MSBs of byte 9
+	 * Mac OS-X host sends us this.
+	 *
+	 *			cmnd[9]	cmnd[2]
+	 *	Win		0x00	0x0
+	 *	Mac		0x80	0x0
+	 */
+	format = (common->cmnd[9] >> 6) & 0x3;
+	if (format == 0)
+		format = common->cmnd[2] & 0xf;	/* new style MMC-2 */
+
+	ret = fsg_get_toc(curlun, msf, format, buf);
+	if (ret < 0) {
+		curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
+		return -EINVAL;
+	}
+	return ret;
+#endif
 }
 
 static int do_mode_sense(struct fsg_common *common, struct fsg_buffhd *bh)
@@ -1618,8 +1669,8 @@ static int do_mode_select(struct fsg_common *common, struct fsg_buffhd *bh)
 	return -EINVAL;
 }
 
-
 /*-------------------------------------------------------------------------*/
+
 
 static int halt_bulk_in_endpoint(struct fsg_dev *fsg)
 {
@@ -2187,7 +2238,11 @@ static int do_scsi_command(struct fsg_common *common)
 		common->data_size_from_cmnd =
 			get_unaligned_be16(&common->cmnd[7]);
 		reply = check_command(common, 10, DATA_DIR_TO_HOST,
+#ifdef READ_TOC_SUPPORT_MAC_OS
+				(0xf<<6) | (1<<1), 1,
+#else
 				      (7<<6) | (1<<1), 1,
+#endif
 				      "READ TOC");
 		if (reply == 0)
 			reply = do_read_toc(common, bh);
@@ -3154,6 +3209,7 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 	struct usb_gadget	*gadget = c->cdev->gadget;
 	int			i;
 	struct usb_ep		*ep;
+	int status_id;
 
 	fsg->gadget = gadget;
 
@@ -3163,6 +3219,14 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 		return i;
 	fsg_intf_desc.bInterfaceNumber = i;
 	fsg->interface_number = i;
+
+	if (ms_string_defs[0].id == 0) {
+		status_id = usb_string_id(c->cdev);
+		if (status_id < 0)
+			return status_id;
+		ms_string_defs[0].id = status_id;
+		fsg_intf_desc.iInterface = status_id;
+	}
 
 	/* Find all the endpoints we will use */
 	ep = usb_ep_autoconfig(gadget, &fsg_fs_bulk_in_desc);
@@ -3259,7 +3323,7 @@ static int fsg_bind_config(struct usb_composite_dev *cdev,
 	fsg->function.setup       = fsg_setup;
 	fsg->function.set_alt     = fsg_set_alt;
 	fsg->function.disable     = fsg_disable;
-
+	fsg->function.strings     = ms_strings;
 	fsg->common               = common;
 	/*
 	 * Our caller holds a reference to common structure so we
@@ -3377,4 +3441,3 @@ fsg_common_from_params(struct fsg_common *common,
 	fsg_config_from_params(&cfg, params);
 	return fsg_common_init(common, cdev, &cfg);
 }
-

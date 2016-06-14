@@ -1144,4 +1144,9 @@ config RTC_DRV_QPNP
 	  To compile this driver as a module, choose M here: the
 	  module will be called qpnp-rtc.
 
+config POWER_OFF_ALARM
+	bool "Power off alarm feature"
+	help
+	  Say Y here if you want to support power-off alarm feature
+
 endif # RTC_CLASS

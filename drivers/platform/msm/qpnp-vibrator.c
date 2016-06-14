@@ -35,6 +35,8 @@
 #define QPNP_VIB_VTG_SET_MASK		0x1F
 #define QPNP_VIB_LOGIC_SHIFT		4
 
+#define VIB_LEVEL_CTRL			1
+
 struct qpnp_vib {
 	struct spmi_device *spmi;
 	struct hrtimer vib_timer;
@@ -124,6 +126,44 @@ int qpnp_vibrator_config(struct qpnp_vib_config *vib_cfg)
 	return rc;
 }
 EXPORT_SYMBOL(qpnp_vibrator_config);
+
+/* Device parts */
+#ifdef VIB_LEVEL_CTRL
+static ssize_t level_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	if (vib_dev == NULL) {
+		pr_err("%s: vib_dev is NULL\n", __func__);
+		return -ENODEV;
+	}
+
+	return sprintf(buf, "%d\n", vib_dev->vtg_level);
+}
+
+static ssize_t level_store(
+		struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	int value;
+
+	if (vib_dev == NULL) {
+		pr_err("%s: vib_dev is NULL\n", __func__);
+		return -ENODEV;
+	}
+
+	if (sscanf(buf, "%d", &value) != 1)
+		return -EINVAL;
+
+	if (value < QPNP_VIB_MIN_LEVEL || value > QPNP_VIB_MAX_LEVEL) {
+		pr_err("%s: level must be in range %d~%d\n", __func__, QPNP_VIB_MIN_LEVEL, QPNP_VIB_MAX_LEVEL);
+		return -EINVAL;
+	}
+
+	vib_dev->vtg_level = value;
+
+	return size;
+}
+static DEVICE_ATTR(level, S_IRUGO | S_IWUSR, level_show, level_store);
+#endif
 
 static int qpnp_vib_set(struct qpnp_vib *vib, int on)
 {
@@ -294,6 +334,12 @@ static int __devinit qpnp_vibrator_probe(struct spmi_device *spmi)
 	if (rc < 0)
 		return rc;
 
+#ifdef VIB_LEVEL_CTRL
+	rc = device_create_file(vib->timed_dev.dev, &dev_attr_level);
+	if (rc < 0)
+		return rc;
+#endif
+
 	vib_dev = vib;
 
 	return rc;
@@ -303,6 +349,9 @@ static int  __devexit qpnp_vibrator_remove(struct spmi_device *spmi)
 {
 	struct qpnp_vib *vib = dev_get_drvdata(&spmi->dev);
 
+#ifdef VIB_LEVEL_CTRL
+	device_remove_file(vib->timed_dev.dev, &dev_attr_level);
+#endif
 	cancel_work_sync(&vib->work);
 	hrtimer_cancel(&vib->vib_timer);
 	timed_output_dev_unregister(&vib->timed_dev);

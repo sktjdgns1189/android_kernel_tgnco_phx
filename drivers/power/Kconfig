@@ -506,4 +506,55 @@ config QPNP_BMS
 	  Say Y here to enable support for QPNP chip bms device.
 	  It registers a fuelgauge bms power supply to report
 	  State of Charge.
+
+config BQ24314C_OVP
+	bool "TI BQ24314C OVP detecter control Driver"
+	default n
+	help
+	  TI BQ24314C OVP detecter control driver
+
+config BQ5101X_CHARGER
+	bool "TI BQ5101X Wireless Charging control Driver"
+	default n
+	help
+	  TI BQ5101X wireless charging control driver
+
+config BQ27520_BATTERY
+	tristate "BQ27520 battery driver"
+	depends on I2C
+	default n
+	help
+	  Say Y here to enable support for batteries with BQ27520 (I2C) chips.
+
+config BQ2419X_CHARGER
+	tristate "BQ2419X charger driver"
+	depends on I2C
+	default n
+	help
+	  Say Y here to enable support for batteries with BQ2419X (I2C) chips.
+
+config BATTERY_PROTECTION
+	bool "Battery protection mechanism driver"
+	default n
+	help
+	  Say Y here to enable support the battery protection functions.
+
+config FIH_BATTERY
+	tristate "FIH battery driver"
+	default n
+	help
+	  Say Y here to enable support for fih battery to monitor data.
+
+config FIH_MT_SLEEP
+	bool "MT sleep current test feature"
+	default n
+	help
+	  Say Y here to enable support the MT sleep current test
+
+config FIH_DISABLE_ULPM
+	bool "Disabe PMIC BATFET ULPM mode"
+	default n
+	help
+	  Say Y here to disable BATFET ULPM feature
+
 endif # POWER_SUPPLY

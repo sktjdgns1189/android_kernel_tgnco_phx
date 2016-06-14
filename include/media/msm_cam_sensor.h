@@ -13,6 +13,7 @@
 #define MAX_CID                   16
 
 #define MSM_SENSOR_MCLK_8HZ   8000000
+#define MSM_SENSOR_MCLK_12HZ  12000000 //SW4-Rocky-Camera-PortingCamera_00+_20130913
 #define MSM_SENSOR_MCLK_16HZ  16000000
 #define MSM_SENSOR_MCLK_24HZ  24000000
 
@@ -109,17 +110,82 @@ enum msm_sensor_power_seq_gpio_t {
 	SENSOR_GPIO_MAX,
 };
 
+//SW4-Rocky-Camera-PortingCamera_00+{_20130913
+enum isp_sensor_power_seq_gpio_t {
+	//with same ordered in msm8x26-camera-sensor-irish.dtsi
+	ISP_SUSPEND = 1,
+	ISP_RESET_N,
+	ISP_INTR,
+	ISP_AVDD_EN,
+	ISP_DVDD_EN,
+	ISP_VCORE_EN = 6,
+	SENSOR_VIO = 7,
+	ISP_FLASH_EN = 8,
+	SENSOR_POWER_MAX,
+};
+enum isp_main_sensor_power_seq_gpio_t {
+	//with same ordered in msm8x26-camera-sensor-irish.dtsi
+	CAM_8M_1P8_EN = 7,
+	CAM_8M_2P8_EN = 8,
+	FLASH_ENABLE = 9,
+	FLASH_PASYNC = 10,
+	ISP_MAIN_SENSOR_GPIO_MAX = 11,
+};
+enum mcs_isp_main_sensor_power_seq_gpio_t {
+	//with same ordered in msm8x26-camera-sensor-irish.dtsi
+	MCS_CAM_8M_2P8_EN = 7,
+	MCS_ISP_MAIN_SENSOR_GPIO_MAX = 8,
+};
+enum isp_sub_sensor_power_seq_gpio_t {
+	//with same ordered in msm8x26-camera-sensor-irish.dtsi
+	//CAM_2M_1P8_EN = 7,  //control by LCM, Workaround!!  //SW4-Rocky-Camera-PortingCamera
+	ISP_SUB_SENSOR_GPIO_MAX=7,//=8,  //control by LCM, Workaround!!  //SW4-Rocky-Camera-PortingCamera
+};
+//SW4-Rocky-Camera-PortingCamera_00+}_20130913
+
 enum msm_camera_vreg_name_t {
 	CAM_VDIG,
 	CAM_VIO,
 	CAM_VANA,
 	CAM_VAF,
+	CAM_VPH,
 	CAM_VREG_MAX,
 };
+
+//SW4-Rocky-Camera-PortingCamera_00+{_20130913
+//if main and sub camera has the same vreg, not need this
+
+//qcom,cam-vreg-name = "cam_vaf";
+enum isp_main_camera_vreg_name_t {
+	MAIN_CAM_VDIG,//Rocky_20131023
+	MAIN_CAM_VAF,
+	MAIN_CAM_VREG_MAX,
+};
+
+//qcom,cam-vreg-name = "cam_vdig", "cam_vana";
+enum isp_sub_camera_vreg_name_t {
+	SUB_CAM_VDIG,
+	SUB_CAM_VANA,
+	SUB_CAM_VREG_MAX,
+};
+
+//SW4-Rocky-EVT-Camera-PortingCamera_00+{_20131015
+enum isp_evt_sub_camera_vreg_name_t {
+	EVT_SUB_CAM_VDIG,
+	EVT_SUB_CAM_VREG_MAX,
+};
+//SW4-Rocky-EVT-Camera-PortingCamera_00+}_20131015
+//SW4-Rocky-Camera-PortingCamera_00+}_20130913
 
 enum msm_sensor_resolution_t {
 	MSM_SENSOR_RES_FULL,
 	MSM_SENSOR_RES_QTR,
+	//SW4-Rocky-Camera-PortingCamera_00+{_20130913
+	MSM_SENSOR_RES_FULL_PREVIEW,//For Video Full Size Preview
+	MSM_SENSOR_RES_HD,//For Video HD
+	MSM_SENSOR_RES_FHD,	//SW4-RL-Camera-addFor_FHD_Recording-00+_20140423
+	//SW4-Rocky-Camera-PortingCamera_00+}_20130913
+	MSM_SENSOR_RES_HFR90,  //SW5-Webber-Camera-add_for_HighFrameRecording_90fps_20150423
 	MSM_SENSOR_RES_2,
 	MSM_SENSOR_RES_3,
 	MSM_SENSOR_RES_4,
@@ -156,6 +222,21 @@ enum {
 	MSM_CAMERA_EFFECT_MODE_EMBOSS,
 	MSM_CAMERA_EFFECT_MODE_SKETCH,
 	MSM_CAMERA_EFFECT_MODE_NEON,
+	MSM_CAMERA_EFFECT_AURA,
+	MSM_CAMERA_EFFECT_VINTAGE,
+	MSM_CAMERA_EFFECT_VINTAGE2,
+	MSM_CAMERA_EFFECT_LOMO,
+	MSM_CAMERA_EFFECT_RED,
+	MSM_CAMERA_EFFECT_BLUE,
+	MSM_CAMERA_EFFECT_GREEN,
+	MSM_CAMERA_EFFECT_VIVID,
+	MSM_CAMERA_EFFECT_AURA_RED,
+	MSM_CAMERA_EFFECT_AURA_ORANGE,
+	MSM_CAMERA_EFFECT_AURA_YELLOW,
+	MSM_CAMERA_EFFECT_AURA_GREEN,
+	MSM_CAMERA_EFFECT_AURA_BLUE,
+	MSM_CAMERA_EFFECT_AURA_VIOLET,
+	MSM_CAMERA_EFFECT_YELLOW,
 	MSM_CAMERA_EFFECT_MODE_MAX
 };
 
@@ -196,7 +277,55 @@ enum {
 	MSM_CAMERA_SCENE_MODE_FACE_PRIORITY,
 	MSM_CAMERA_SCENE_MODE_BARCODE,
 	MSM_CAMERA_SCENE_MODE_HDR,
+#ifndef CONFIG_FIH_ISP_MAIN_CAM
+        MSM_CAMERA_SCENE_MODE_TEXT,
+        MSM_CAMERA_SCENE_MODE_HIGHSENSITIVITY,
+        MSM_CAMERA_SCENE_MODE_LANDSCAPEPORTRAIT,
+        MSM_CAMERA_SCENE_MODE_KID,
+        MSM_CAMERA_SCENE_MODE_PET,
+        MSM_CAMERA_SCENE_MODE_FLOWER,
+        MSM_CAMERA_SCENE_MODE_SOFTFLOWINGWATER,
+        MSM_CAMERA_SCENE_MODE_FOOD,
+        MSM_CAMERA_SCENE_MODE_INDOOR,
+#else
+	MSM_CAMERA_BESTSHOT_TEXT,
+	MSM_CAMERA_BESTSHOT_HIGHSENSITIVITY,
+	MSM_CAMERA_BESTSHOT_LANDSCAPEPORTRAIT,
+	MSM_CAMERA_BESTSHOT_KID,
+	MSM_CAMERA_BESTSHOT_PET,
+	MSM_CAMERA_BESTSHOT_FLOWER,
+	MSM_CAMERA_BESTSHOT_SOFTFLOWINGWATER,
+	MSM_CAMERA_BESTSHOT_FOOD,
+	MSM_CAMERA_BESTSHOT_INDOOR,
+#endif
 	MSM_CAMERA_SCENE_MODE_MAX
+};
+
+enum {
+	MSM_CAMERA_ISO_MODE_AUTO,
+	MSM_CAMERA_ISO_MODE_DEBLUR,  //QCT default, iCatch don't support, set this mode to auto
+	MSM_CAMERA_ISO_MODE_50,
+	MSM_CAMERA_ISO_MODE_100,
+	MSM_CAMERA_ISO_MODE_200,
+	MSM_CAMERA_ISO_MODE_400,
+	MSM_CAMERA_ISO_MODE_800,
+	MSM_CAMERA_ISO_MODE_1600,
+	MSM_CAMERA_ISO_MODE_MAX
+} ;
+
+enum {
+	MSM_CAMERA_CONTRAST_FIHLV0,
+	MSM_CAMERA_CONTRAST_FIHLV1,
+	MSM_CAMERA_CONTRAST_FIHLV2,
+	MSM_CAMERA_CONTRAST_FIHLV3,
+	MSM_CAMERA_CONTRAST_FIHLV4,
+	MSM_CAMERA_CONTRAST_FIHLV5,
+	MSM_CAMERA_CONTRAST_FIHLV6,
+	MSM_CAMERA_CONTRAST_FIHLV7,
+	MSM_CAMERA_CONTRAST_FIHLV8,
+	MSM_CAMERA_CONTRAST_FIHLV9,
+	MSM_CAMERA_CONTRAST_FIHLV10,
+	MSM_CAMERA_CONTRAST_FIHLVMAX
 };
 
 enum csid_cfg_type_t {
@@ -220,6 +349,11 @@ enum camera_vreg_type {
 enum sensor_af_t {
 	SENSOR_AF_FOCUSSED,
 	SENSOR_AF_NOT_FOCUSSED,
+//fihtdc,derek add for caf
+	SENSOR_C_AF_FOCUSSED,
+	SENSOR_CAF_IDLE,
+	SENSOR_CAF_BUSY,
+//fihtdc,derek add for caf end
 };
 
 struct msm_sensor_power_setting {
@@ -393,12 +527,314 @@ struct msm_camera_sensor_slave_info {
 	struct msm_sensor_init_params sensor_init_params;
 };
 
+//SW4-Rocky-Camera-PortingCamera_00+{_20130913
+//copy from VKY
+//HL*_20130927
+//Orig - #if 0
+#if 1
+enum msm_sensor_reg_update {
+	/* Sensor egisters that need to be updated during initialization */
+	MSM_SENSOR_REG_INIT,
+	/* Sensor egisters that needs periodic I2C writes */
+	MSM_SENSOR_UPDATE_PERIODIC,
+	/* All the sensor Registers will be updated */
+	MSM_SENSOR_UPDATE_ALL,
+	/* Not valid update */
+	MSM_SENSOR_UPDATE_INVALID
+};
+#endif
+
+struct sensor_init_cfg {
+	uint8_t prev_res;
+	uint8_t pict_res;
+};
+
+#ifndef CONFIG_FIH_ISP_MAIN_CAM
+typedef enum {
+  ISP_AF_MODE_UNCHANGED = -1,
+  ISP_AF_MODE_NORMAL    = 0,
+  ISP_AF_MODE_MACRO,
+  ISP_AF_MODE_AUTO,
+  ISP_AF_MODE_CAF,
+  ISP_AF_MODE_INFINITY,
+  ISP_AF_MODE_MAX
+} kernel_isp3a_af_mode_t;
+#else
+typedef enum {
+     ISP_FOCUS_MODE_AUTO,
+     ISP_FOCUS_MODE_INFINITY,
+     ISP_FOCUS_MODE_MACRO,
+     ISP_FOCUS_MODE_FIXED,
+     ISP_FOCUS_MODE_EDOF,
+     ISP_FOCUS_MODE_CONTINOUS_VIDEO,
+     ISP_FOCUS_MODE_CONTINOUS_PICTURE,
+     ISP_FOCUS_MODE_FULL_SEARCH,	//SW4-RL-Camera-addForFocusFullSearchMode-00+_20140117
+     ISP_FOCUS_MODE_FACE_TRACKING,	//SW4-RL-implementFaceTracking-00+_20140919
+     ISP_FOCUS_MODE_MAX
+} kernel_isp3a_af_mode_t;
+#endif
+
+//SW4-RK-Camera-GetGYRO_GsensorData-00+{_20140116
+typedef struct {
+    uint32_t frame_id;
+    long gyro[3];
+    long acce[3];
+}sensor_data_get_t;
+//SW4-RK-Camera-GetGYRO_GsensorData-00+}_20140116
+
+//SW4-RK-Camera-SetEXIFInformation-00+{_20131225
+typedef struct {
+    uint32_t  num;    // Numerator
+    uint32_t  denom;  // Denominator
+} exposure_value_cfg;
+//SW4-RK-Camera-SetEXIFInformation-00+}_20131225
+
+//SW4-RK-Camera-SetEXIF3AInformation-00+{_20140218
+typedef struct {
+	uint8_t capExpIdx;
+	uint8_t capAgcIdx;
+	uint8_t pvExpIdx;
+	uint8_t pvAgcIdx;
+	uint8_t aeEntry;
+	uint8_t aeLuma;
+	uint8_t aeStep;
+	uint8_t aetarget;
+	uint8_t awbRGain_LSB;
+	uint8_t awbRGain_MSB;
+	uint8_t awbBGain_LSB;
+	uint8_t awbBGain_MSB;
+	uint8_t awbiCandidateIdx;
+	uint8_t awbDynamicIQCtIdx;
+	uint8_t afVertical_step_LSB;
+	uint8_t afVertical_step_MSB;
+	uint8_t afMulti_Step_LSB;
+	uint8_t afMulti_Step_MSB;
+	uint8_t afFinal_Step_LSB;
+	uint8_t afFinal_Step_MSB;
+	uint8_t afFinal_Result_LSB;
+	uint8_t afFinal_Result_MSB;
+	uint8_t threeA_Version;
+	uint8_t threeA_ID;
+}threeA_info_get_cfg;
+//SW4-RK-Camera-SetEXIF3AInformation-00+}_20140218
+
+struct focus_cfg {
+	int32_t steps;
+	int dir;
+//copy from VKY_{
+//Anvoi 20130212 Anvoi add 13M camera TAF support
+	uint16_t af_enable;	// 1:enable af, 0:disable af
+	uint16_t af_continue; // 1:ebale continue af, 0:disable continue af
+	kernel_isp3a_af_mode_t mode;
+	uint16_t result;
+	int16_t coordinate_x;
+	int16_t coordinate_y;
+	int16_t rectangle_h;
+	int16_t rectangle_w;
+	uint8_t isFaceDetectMode;	//SW4-RL-implementFaceTracking-00+_20140919
+//Anvoi 20130212 Anvoi add 13M camera TAF support
+//SW5-Webber-Camera-ImplementAutoFocus-20130311-start
+    int16_t af_done;
+    int16_t af_status;
+    int16_t af_get_choice;
+//SW5-Webber-Camera-ImplementAutoFocus-20130311-end
+};
+
+//SW4-RK-Camera-forFIHCameraAP-00+{_20140103
+#if 1//ForFIHCameraAP
+//SW4-L1-HL-Camera-ImplementSaturation-00+{_20130305
+#define CAMERA_SATURATION_FIHLV0			1
+#define CAMERA_SATURATION_FIHLV1			3
+#define CAMERA_SATURATION_FIHLV2			5
+#define CAMERA_SATURATION_FIHLV3			7
+#define CAMERA_SATURATION_FIHLV4			9
+//SW4-L1-HL-Camera-ImplementSaturation-00+}_20130305
+
+ //SW4-L1-HL-Camera-ImplementSharpness-00+{_20130305
+#define CAMERA_CONTRAST_FIHLV0			1
+#define CAMERA_CONTRAST_FIHLV1			3
+#define CAMERA_CONTRAST_FIHLV2			5
+#define CAMERA_CONTRAST_FIHLV3			7
+#define CAMERA_CONTRAST_FIHLV4			9
+ //SW4-L1-HL-Camera-ImplementSharpness-00+}_20130305
+
+//SW4-L1-HL-Camera-ImplementContrast-00+{_20130305
+#define CAMERA_SHARPNESS_FIHLV0		0
+#define CAMERA_SHARPNESS_FIHLV1		5
+#define CAMERA_SHARPNESS_FIHLV2		10
+#define CAMERA_SHARPNESS_FIHLV3		15
+#define CAMERA_SHARPNESS_FIHLV4		20
+//SW4-L1-HL-Camera-ImplementContrast-00+}_20130305
+//SW4-RK-Camera-forFIHCameraAP-00+}_20140103
+#else
+//SW4-Rocky-00+{_20131001_for_QC_CAMERA_AP
+enum {
+	CAMERA_SATURATION_FIHLV0,
+	CAMERA_SATURATION_FIHLV1,
+	CAMERA_SATURATION_FIHLV2,
+	CAMERA_SATURATION_FIHLV3,
+	CAMERA_SATURATION_FIHLV4,
+	CAMERA_SATURATION_FIHLV5,
+	CAMERA_SATURATION_FIHLV6,
+	CAMERA_SATURATION_FIHLV7,
+	CAMERA_SATURATION_FIHLV8,
+	CAMERA_SATURATION_FIHLV9,
+	CAMERA_SATURATION_FIHLV10
+};
+enum {
+	CAMERA_CONTRAST_FIHLV0,
+	CAMERA_CONTRAST_FIHLV1,
+	CAMERA_CONTRAST_FIHLV2,
+	CAMERA_CONTRAST_FIHLV3,
+	CAMERA_CONTRAST_FIHLV4,
+	CAMERA_CONTRAST_FIHLV5,
+	CAMERA_CONTRAST_FIHLV6,
+	CAMERA_CONTRAST_FIHLV7,
+	CAMERA_CONTRAST_FIHLV8,
+	CAMERA_CONTRAST_FIHLV9,
+	CAMERA_CONTRAST_FIHLV10
+};
+enum {
+	CAMERA_SHARPNESS_FIHLV0=0,
+	CAMERA_SHARPNESS_FIHLV1=6,
+	CAMERA_SHARPNESS_FIHLV2=12,
+	CAMERA_SHARPNESS_FIHLV3=18,
+	CAMERA_SHARPNESS_FIHLV4=24,
+	CAMERA_SHARPNESS_FIHLV5=30,
+	CAMERA_SHARPNESS_FIHLV6=36
+};
+//SW4-Rocky-00+}_20131001_for_QC_CAMERA_AP
+#endif
+//copy from VKY_}
+//SW4-Rocky-Camera-PortingCamera_00+}_20130913
+
+//SW4-Rocky-00+{_20131001_for_WB_EXPOSURE_ANTIBANDING
+/* This list must match Cam_types.h */
+enum {
+	CAMERA_EXPOSURE_COMPENSATION_LV0=12,
+	CAMERA_EXPOSURE_COMPENSATION_LV1=6,
+	CAMERA_EXPOSURE_COMPENSATION_LV2=0,
+	CAMERA_EXPOSURE_COMPENSATION_LV3=-6,
+	CAMERA_EXPOSURE_COMPENSATION_LV4=-12
+};
+enum {
+	CAMERA_ANTIBANDING_OFF,
+	CAMERA_ANTIBANDING_60HZ,
+	CAMERA_ANTIBANDING_50HZ,
+	CAMERA_ANTIBANDING_AUTO
+};
+enum {
+    MSM_CAMERA_AE_MODE_FRAME_AVERAGE,
+    MSM_CAMERA_AE_MODE_CENTER_WEIGHTED,
+    MSM_CAMERA_AE_MODE_SPOT_METERING,
+    MSM_CAMERA_AE_MODE_SMART_METERING,
+    MSM_CAMERA_AE_MODE_USER_METERING,
+    MSM_CAMERA_AE_MODE_METERING_ADV,
+    MSM_CAMERA_AE_MODE_WEIGHTED_ADV,
+    MSM_CAMERA_AE_MODE_MAX
+};
+
+enum {
+    ISP_FLASH_MODE_OFF,
+    ISP_FLASH_MODE_AUTO,
+    ISP_FLASH_MODE_ON,
+    ISP_FLASH_MODE_TORCH,
+    ISP_FLASH_MODE_MAX
+};
+
+//SW4-Rocky-00+}_20131001_for_WB_EXPOSURE_ANTIBANDING
+
+
 struct sensorb_cfg_data {
 	int cfgtype;
+//SW4-Rocky-Camera-PortingCamera_00+{_20130913
+	//copy from VKY_{
+	int mode;
+	//int rs;
+	//uint8_t max_steps;
+	//copy from VKY_}
+//SW4-Rocky-Camera-PortingCamera_00+}_20130913
 	union {
 		struct msm_sensor_info_t      sensor_info;
 		struct msm_sensor_init_params sensor_init_params;
 		void                         *setting;
+		int wdr_mode;	//SW4-RL-Camera-WDR-00*_20140117
+		int hdr_mode; 	//SW4-RL-Camera-implementHDR-00+_20140125
+		int aec_mode;		//SW4-RL-Camera-implementAE/AWBLock-00+_20140710
+		int awb_mode;	//SW4-RL-Camera-implementAE/AWBLock-00+_20140710
+//SW4-Rocky-Camera-PortingCamera_00+{_20130913
+//copy from VKY_{
+#if 0
+		uint8_t effect;	//Orig -- int8_t effect;	//SW4-L1-HL-Camera-ImplementSceneMode-00*_20130227
+		uint8_t lens_shading;
+		uint16_t prevl_pf;
+		uint16_t prevp_pl;
+		uint16_t pictl_pf;
+		uint16_t pictp_pl;
+		uint32_t pict_max_exp_lc;
+		uint16_t p_fps;
+		uint8_t iso_type;
+		struct sensor_init_cfg init_info;
+		struct sensor_pict_fps gfps;
+		struct exp_gain_cfg exp_gain;
+#endif
+		struct focus_cfg focus;
+#if 0
+		struct fps_cfg fps;
+		struct wb_info_cfg wb_info;
+		struct sensor_3d_exp_cfg sensor_3d_exp;
+		struct sensor_calib_data calib_info;
+		struct sensor_output_info_t output_info;
+		struct msm_eeprom_data_t eeprom_data;
+		struct csi_lane_params_t csi_lane_params;
+		struct sensor_hdr_update_parm_t hdr_update_parm;
+		/* QRD */
+		uint16_t antibanding;
+#endif
+#ifndef CONFIG_FIH_ISP_MAIN_CAM
+		uint8_t contrast;
+		uint8_t saturation;
+		uint8_t sharpness;
+#endif
+#if 0
+		int8_t brightness;
+		int8_t ae_mode;		//Orig int ae_moe;	//SW4-L1-HL-Camera-ImplementExposureMeter-00*_20130227
+		uint8_t wb_val;
+		int8_t exp_compensation;
+		uint32_t pclk;
+		struct cord aec_cord;
+		int is_autoflash;
+		struct mirror_flip mirror_flip;
+		void *setting;
+		int32_t vision_mode_enable;
+		int32_t vision_ae;
+		//SW4-L1-HL-Camera-ImplementSceneMode-00*_20130227
+		//Orig -- int scene;
+		uint8_t scene;
+        //SW5-Webber-Camera-ImplementLedFlash-20130313-start
+		int led_flash_mode;
+        //SW5-Webber-Camera-ImplementLedFlash-20130313-end
+        //SW5-Webber-Camera-ImplementGetIsoValue-20130314-start
+		uint16_t iso_value;
+		//SW5-Webber-Camera-ImplementGetIsoValue-20130314-start
+		//FIHLX_VKY, Fix APPG2-624, Oscar Lin, 2013/03/14 {
+		exposure_value_cfg exposure_value;
+		threeA_info_cfg threeA_info;
+		//FIHLX_VKY, Fix APPG2-624, Oscar Lin, 2013/03/14 }
+        //SW5-marx-Camera-ImplementHDR-20130318-start
+		int hdr_mode;
+        //SW5-marx-Camera-ImplementHDR-20130318-end
+		int flash_state; //FIHLX_VKY, Fix VKY-9255, Oscar Lin, 2013/05/16
+		int aec_lock;
+		int awb_lock;
+//FIHTDC@20130530 Rocky add more EXIF info. {
+		uint8_t exposureBias;
+		int MeteringMode;
+		int WhiteBalance;
+//FIHTDC@20130530 Rocky add more EXIF info. }
+	//copy from VKY_}
+//SW4-Rocky-Camera-PortingCamera_00+}_20130913
+#endif
 	} cfg;
 };
 
@@ -459,22 +895,22 @@ struct msm_eeprom_cfg_data {
 };
 
 enum msm_sensor_cfg_type_t {
-	CFG_SET_SLAVE_INFO,
+	CFG_SET_SLAVE_INFO,	//0
 	CFG_SLAVE_READ_I2C,
 	CFG_WRITE_I2C_ARRAY,
 	CFG_SLAVE_WRITE_I2C_ARRAY,
 	CFG_WRITE_I2C_SEQ_ARRAY,
-	CFG_POWER_UP,
+	CFG_POWER_UP,	//5
 	CFG_POWER_DOWN,
 	CFG_SET_STOP_STREAM_SETTING,
 	CFG_GET_SENSOR_INFO,
 	CFG_GET_SENSOR_INIT_PARAMS,
-	CFG_SET_INIT_SETTING,
+	CFG_SET_INIT_SETTING,	//10
 	CFG_SET_RESOLUTION,
 	CFG_SET_STOP_STREAM,
 	CFG_SET_START_STREAM,
 	CFG_SET_SATURATION,
-	CFG_SET_CONTRAST,
+	CFG_SET_CONTRAST,	//15
 	CFG_SET_SHARPNESS,
 	CFG_SET_ISO,
 	CFG_SET_EXPOSURE_COMPENSATION,
@@ -484,6 +920,25 @@ enum msm_sensor_cfg_type_t {
 	CFG_SET_WHITE_BALANCE,
 	CFG_SET_AUTOFOCUS,
 	CFG_CANCEL_AUTOFOCUS,
+//Rocky_{_20131005
+	#if 1
+	CFG_SET_EXPOSURE_MODE,//25
+	CFG_SET_FOCUS_ROI,
+	CFG_SET_AUTOFOCUS_MODE,
+	CFG_SET_FLASH_MODE,//28  //Rocky_20131007
+	#endif
+//Rocky_}_20131005
+	CFG_GET_EXPOSURE_TIME,//SW4-RK-Camera-SetEXIFInformation-00+_20131225
+	CFG_GET_ISO_VALUE,//30	//SW4-RK-Camera-SetEXIFInformation-00+_20131230
+	CFG_GET_FOCUS_STATUS,//31, fihtdc, derekcwwu add
+	CFG_SET_WDR, //32 	//SW4-RL-Camera-WDR-00*_20140116
+	CFG_SET_HDR,	 //33	//SW4-RL-Camera-implementHDR-00+_20140125
+	CFG_SET_SENSOR_DATA,//SW4-RK-Camera-GetGYRO_GsensorData-00+_20140116
+	CFG_GET_FLASH_STATE,//FihtdcCode@AlanHZChang, add for flashLED status from ISP, 2014/02/19
+	CFG_GET_3A_INFO,//SW4-RK-Camera-SetEXIF3AInformation-00+_20140218
+	CFG_SET_METERING_ROI,//SW4-RK-Camera-SettingFrontCameraExposureMeteringMode-00+_20140328
+	CFG_SET_AEC_LOCK, //SW4-RL-Camera-implementAELock-00+_20140710
+	CFG_SET_AWB_LOCK, //SW4-RL-Camera-implementAWBLock-00+_20140710
 };
 
 enum msm_actuator_cfg_type_t {

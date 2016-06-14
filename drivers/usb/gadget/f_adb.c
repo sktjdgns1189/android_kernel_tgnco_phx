@@ -167,6 +167,20 @@ static inline struct adb_dev *func_to_adb(struct usb_function *f)
 	return container_of(f, struct adb_dev, function);
 }
 
+static struct usb_string adb_string_defs[] = {
+	[0].s       = "Android phone",
+	{  }, /* end of list */
+};
+
+static struct usb_gadget_strings adb_string_table = {
+	.language   = 0x0409, /* en-us */
+	.strings    = adb_string_defs,
+};
+
+static struct usb_gadget_strings *adb_strings[] = {
+	&adb_string_table,
+	NULL,
+};
 
 static struct usb_request *adb_request_new(struct usb_ep *ep, int buffer_size)
 {
@@ -536,6 +550,7 @@ adb_function_bind(struct usb_configuration *c, struct usb_function *f)
 	struct adb_dev	*dev = func_to_adb(f);
 	int			id;
 	int			ret;
+	int			status_id;
 
 	dev->cdev = cdev;
 	DBG(cdev, "adb_function_bind dev: %p\n", dev);
@@ -545,6 +560,15 @@ adb_function_bind(struct usb_configuration *c, struct usb_function *f)
 	if (id < 0)
 		return id;
 	adb_interface_desc.bInterfaceNumber = id;
+
+	if (adb_string_defs[0].id == 0) {
+		status_id = usb_string_id(c->cdev);
+		if (status_id < 0)
+			return status_id;
+
+		adb_string_defs[0].id = status_id;
+		adb_interface_desc.iInterface = status_id;
+	}
 
 	/* allocate endpoints */
 	ret = adb_create_bulk_endpoints(dev, &adb_fullspeed_in_desc,
@@ -674,6 +698,7 @@ static int adb_bind_config(struct usb_configuration *c)
 	dev->function.unbind = adb_function_unbind;
 	dev->function.set_alt = adb_function_set_alt;
 	dev->function.disable = adb_function_disable;
+	dev->function.strings = adb_strings;
 
 	return usb_add_function(c, &dev->function);
 }

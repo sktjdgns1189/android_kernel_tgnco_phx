@@ -82,6 +82,8 @@ enum dsi_panel_bl_ctrl {
 	BL_PWM,
 	BL_WLED,
 	BL_DCS_CMD,
+	BL_I2C_LM3630,
+	BL_I2C_RT4501,
 	UNKNOWN_CTRL,
 };
 
@@ -271,6 +273,8 @@ struct mdss_dsi_ctrl_pdata {
 	int irq_cnt;
 	int rst_gpio;
 	int disp_en_gpio;
+	int disp_bias_en_p_gpio;
+	int disp_bias_en_n_gpio;
 	int disp_te_gpio;
 	int mode_gpio;
 	int disp_te_gpio_requested;
@@ -290,10 +294,27 @@ struct mdss_dsi_ctrl_pdata {
 	struct mdss_hw *dsi_hw;
 	struct mdss_panel_recovery *recovery;
 
+	struct dsi_panel_cmds on_pre_cmds;
+	struct dsi_panel_cmds setting_cmds;
 	struct dsi_panel_cmds on_cmds;
 	struct dsi_panel_cmds off_cmds;
 	struct dsi_panel_cmds status_cmds;
 	u32 status_value;
+
+#if defined(CONFIG_FB_MSM_MDSS_CABC_CONTROL) || defined(CONFIG_FB_MSM_MDSS_COLOR_MODE)
+	struct dsi_panel_cmds color_mode_pre_cmds;
+	struct dsi_panel_cmds color_mode_cmds;
+#endif
+#ifdef CONFIG_FB_MSM_MDSS_COLOR_TEMPERATURE
+	struct dsi_panel_cmds color_pre_cmds;
+	struct dsi_panel_cmds color_warm_cmds;
+	struct dsi_panel_cmds color_normal_cmds;
+	struct dsi_panel_cmds color_cold_cmds;
+	struct dsi_panel_cmds color_gamma_1_cmds;
+	struct dsi_panel_cmds color_gamma_2_cmds;
+	struct dsi_panel_cmds color_gamma_3_cmds;
+	struct dsi_panel_cmds color_gamma_4_cmds;
+#endif
 
 	struct dsi_panel_cmds video2cmd;
 	struct dsi_panel_cmds cmd2video;
@@ -427,4 +448,9 @@ static inline struct mdss_dsi_ctrl_pdata *mdss_dsi_get_ctrl_by_index(int ndx)
 
 	return ctrl_list[ndx];
 }
+void mipi_dsi_dump(struct mdss_dsi_ctrl_pdata *ctrl);
+void mdp5_dump_regs(void);
+
+void rt4501_set_backlight_level(int enable, int brightness, struct mdss_dsi_ctrl_pdata *ctrl);
+void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level);
 #endif /* MDSS_DSI_H */

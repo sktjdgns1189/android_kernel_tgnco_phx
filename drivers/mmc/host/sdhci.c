@@ -86,10 +86,20 @@ static void sdhci_dump_state(struct sdhci_host *host)
 		mmc_hostname(mmc), mmc->parent->power.runtime_status,
 		atomic_read(&mmc->parent->power.usage_count),
 		mmc->parent->power.disable_depth);
+
+	pr_info("BBox;%s: clk: %d clk-gated: %d claimer: %s pwr: %d\n",
+		mmc_hostname(mmc), host->clock, mmc->clk_gated,
+		mmc->claimer->comm, host->pwr);
+	pr_info("BBox;%s: rpmstatus[pltfm](runtime-suspend:usage_count:disable_depth)(%d:%d:%d)\n",
+		mmc_hostname(mmc), mmc->parent->power.runtime_status,
+		atomic_read(&mmc->parent->power.usage_count),
+		mmc->parent->power.disable_depth);
 }
 
 static void sdhci_dumpregs(struct sdhci_host *host)
 {
+	unsigned int cmd_op_code = 0;
+
 	pr_info(DRIVER_NAME ": =========== REGISTER DUMP (%s)===========\n",
 		mmc_hostname(host->mmc));
 
@@ -140,8 +150,81 @@ static void sdhci_dumpregs(struct sdhci_host *host)
 		       readl(host->ioaddr + SDHCI_ADMA_ERROR),
 		       readl(host->ioaddr + SDHCI_ADMA_ADDRESS));
 
+	pr_info("BBox;SDHCI: =========== REGISTER DUMP (%s)===========\n",
+		mmc_hostname(host->mmc));
+
+	pr_info("BBox;SDHCI: Sys addr: 0x%08x | Version:  0x%08x\n",
+		sdhci_readl(host, SDHCI_DMA_ADDRESS),
+		sdhci_readw(host, SDHCI_HOST_VERSION));
+	pr_info("BBox;SDHCI: Blk size: 0x%08x | Blk cnt:  0x%08x\n",
+		sdhci_readw(host, SDHCI_BLOCK_SIZE),
+		sdhci_readw(host, SDHCI_BLOCK_COUNT));
+	pr_info("BBox;SDHCI: Argument: 0x%08x | Trn mode: 0x%08x\n",
+		sdhci_readl(host, SDHCI_ARGUMENT),
+		sdhci_readw(host, SDHCI_TRANSFER_MODE));
+	pr_info("BBox;SDHCI: Present:  0x%08x | Host ctl: 0x%08x\n",
+		sdhci_readl(host, SDHCI_PRESENT_STATE),
+		sdhci_readb(host, SDHCI_HOST_CONTROL));
+	pr_info("BBox;SDHCI: Power:    0x%08x | Blk gap:  0x%08x\n",
+		sdhci_readb(host, SDHCI_POWER_CONTROL),
+		sdhci_readb(host, SDHCI_BLOCK_GAP_CONTROL));
+	pr_info("BBox;SDHCI: Wake-up:  0x%08x | Clock:    0x%08x\n",
+		sdhci_readb(host, SDHCI_WAKE_UP_CONTROL),
+		sdhci_readw(host, SDHCI_CLOCK_CONTROL));
+	pr_info("BBox;SDHCI: Timeout:  0x%08x | Int stat: 0x%08x\n",
+		sdhci_readb(host, SDHCI_TIMEOUT_CONTROL),
+		sdhci_readl(host, SDHCI_INT_STATUS));
+	pr_info("BBox;SDHCI: Int enab: 0x%08x | Sig enab: 0x%08x\n",
+		sdhci_readl(host, SDHCI_INT_ENABLE),
+		sdhci_readl(host, SDHCI_SIGNAL_ENABLE));
+	pr_info("BBox;SDHCI: AC12 err: 0x%08x | Slot int: 0x%08x\n",
+		host->auto_cmd_err_sts,
+		sdhci_readw(host, SDHCI_SLOT_INT_STATUS));
+	pr_info("BBox;SDHCI: Caps:     0x%08x | Caps_1:   0x%08x\n",
+		sdhci_readl(host, SDHCI_CAPABILITIES),
+		sdhci_readl(host, SDHCI_CAPABILITIES_1));
+	pr_info("BBox;SDHCI: Cmd:      0x%08x | Max curr: 0x%08x\n",
+		sdhci_readw(host, SDHCI_COMMAND),
+		sdhci_readl(host, SDHCI_MAX_CURRENT));
+	pr_info("BBox;SDHCI: Resp 1:   0x%08x | Resp 0:   0x%08x\n",
+		sdhci_readl(host, SDHCI_RESPONSE + 0x4),
+		sdhci_readl(host, SDHCI_RESPONSE));
+	pr_info("BBox;SDHCI: Resp 3:   0x%08x | Resp 2:   0x%08x\n",
+		sdhci_readl(host, SDHCI_RESPONSE + 0xC),
+		sdhci_readl(host, SDHCI_RESPONSE + 0x8));
+	pr_info("BBox;SDHCI: Host ctl2: 0x%08x\n",
+		sdhci_readw(host, SDHCI_HOST_CONTROL2));
+
+	if (host->flags & SDHCI_USE_ADMA)
+		pr_info("BBox;SDHCI: ADMA Err: 0x%08x | ADMA Ptr: 0x%08x\n",
+		       readl(host->ioaddr + SDHCI_ADMA_ERROR),
+		       readl(host->ioaddr + SDHCI_ADMA_ADDRESS));
 	sdhci_dump_state(host);
 	pr_info(DRIVER_NAME ": ===========================================\n");
+	pr_info("BBox;SDHCI: ===========================================\n");
+
+	/* New BBS log*/
+	cmd_op_code = (sdhci_readw(host, SDHCI_COMMAND)) >> 8;
+
+	if(strncmp(mmc_hostname(host->mmc), "mmc0", 4) == 0) {
+		if(cmd_op_code == MMC_READ_SINGLE_BLOCK || cmd_op_code == MMC_READ_MULTIPLE_BLOCK) {
+			printk ("BBox::UEC; 6::0\n");
+			printk ("BBox::UPD; 67::%lu\n", (unsigned long)sdhci_readl(host, SDHCI_ARGUMENT));
+		} else if(cmd_op_code == MMC_WRITE_BLOCK || cmd_op_code == MMC_WRITE_MULTIPLE_BLOCK) {
+			printk ("BBox::UEC; 6::1\n");
+			printk ("BBox::UPD; 67::%lu\n", (unsigned long)sdhci_readl(host, SDHCI_ARGUMENT));
+		} else {
+			printk ("BBox::UEC; 6::2\n");
+		}
+	} else if(strncmp(mmc_hostname(host->mmc), "mmc1", 4) == 0) {
+		if(cmd_op_code == MMC_READ_SINGLE_BLOCK || cmd_op_code == MMC_READ_MULTIPLE_BLOCK) {
+			printk ("BBox::UEC; 43::0\n");
+		} else if(cmd_op_code == MMC_WRITE_BLOCK || cmd_op_code == MMC_WRITE_MULTIPLE_BLOCK) {
+			printk ("BBox::UEC; 43::1\n");
+		} else {
+			printk ("BBox::UEC; 43::2\n");
+		}
+	}
 }
 
 #define MAX_PM_QOS_TIMEOUT_VALUE	100000 /* 100 ms */
@@ -259,6 +342,8 @@ static void sdhci_reset(struct sdhci_host *host, u8 mask)
 	while (sdhci_readb(host, SDHCI_SOFTWARE_RESET) & mask) {
 		if (timeout == 0) {
 			pr_err("%s: Reset 0x%x never completed.\n",
+				mmc_hostname(host->mmc), (int)mask);
+			pr_err("BBox;%s: Reset 0x%x never completed.\n",
 				mmc_hostname(host->mmc), (int)mask);
 			sdhci_dumpregs(host);
 			return;
@@ -1097,6 +1182,8 @@ static void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 		if (timeout == 0) {
 			pr_err("%s: Controller never released "
 				"inhibit bit(s).\n", mmc_hostname(host->mmc));
+			pr_err("BBox;%s: Controller never released "
+				"inhibit bit(s).\n", mmc_hostname(host->mmc));
 			sdhci_dumpregs(host);
 			cmd->error = -EIO;
 			tasklet_schedule(&host->finish_tasklet);
@@ -1294,6 +1381,8 @@ static void sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 		& SDHCI_CLOCK_INT_STABLE)) {
 		if (timeout == 0) {
 			pr_err("%s: Internal clock never "
+				"stabilised.\n", mmc_hostname(host->mmc));
+			pr_err("BBox;%s: Internal clock never "
 				"stabilised.\n", mmc_hostname(host->mmc));
 			sdhci_dumpregs(host);
 			goto ret;
@@ -2514,6 +2603,8 @@ static void sdhci_timeout_timer(unsigned long data)
 		if (!host->mrq->cmd->ignore_timeout) {
 			pr_err("%s: Timeout waiting for hardware interrupt.\n",
 			       mmc_hostname(host->mmc));
+			pr_err("BBox;%s: Timeout waiting for hardware interrupt.\n",
+			       mmc_hostname(host->mmc));
 			sdhci_dumpregs(host);
 		}
 
@@ -2569,6 +2660,9 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 		pr_err("%s: Got command interrupt 0x%08x even "
 			"though no command operation was in progress.\n",
 			mmc_hostname(host->mmc), (unsigned)intmask);
+		pr_err("BBox;%s: Got command interrupt 0x%08x even "
+			"though no command operation was in progress.\n",
+			mmc_hostname(host->mmc), (unsigned)intmask);
 		sdhci_dumpregs(host);
 		return;
 	}
@@ -2583,6 +2677,8 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 		auto_cmd_status = host->auto_cmd_err_sts;
 		pr_err("%s: %s: AUTO CMD err sts 0x%08x\n",
 			mmc_hostname(host->mmc), __func__, auto_cmd_status);
+		pr_err("BBox;%s: %s: AUTO CMD err sts 0x%08x\n",
+			 mmc_hostname(host->mmc), __func__, auto_cmd_status);
 		if (auto_cmd_status & (SDHCI_AUTO_CMD12_NOT_EXEC |
 				       SDHCI_AUTO_CMD_INDEX_ERR |
 				       SDHCI_AUTO_CMD_ENDBIT_ERR))
@@ -2599,7 +2695,8 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 		if (host->cmd->error == -EILSEQ &&
 		    (command != MMC_SEND_TUNING_BLOCK_HS400) &&
 		    (command != MMC_SEND_TUNING_BLOCK_HS200) &&
-		    (command != MMC_SEND_TUNING_BLOCK))
+		    (command != MMC_SEND_TUNING_BLOCK) &&
+		    (command != MMC_SEND_STATUS))
 				host->flags |= SDHCI_NEEDS_RETUNING;
 		tasklet_schedule(&host->finish_tasklet);
 		return;
@@ -2693,6 +2790,9 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		pr_err("%s: Got data interrupt 0x%08x even "
 			"though no data operation was in progress.\n",
 			mmc_hostname(host->mmc), (unsigned)intmask);
+		pr_err("BBox;%s: Got data interrupt 0x%08x even "
+			"though no data operation was in progress.\n",
+			mmc_hostname(host->mmc), (unsigned)intmask);
 		sdhci_dumpregs(host);
 
 		return;
@@ -2727,6 +2827,10 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		}
 		if (pr_msg) {
 			pr_err("%s: data txfr (0x%08x) error: %d after %lld ms\n",
+			       mmc_hostname(host->mmc), intmask,
+			       host->data->error, ktime_to_ms(ktime_sub(
+			       ktime_get(), host->data_start_time)));
+			pr_err("BBox;%s: data txfr (0x%08x) error: %d after %lld ms\n",
 			       mmc_hostname(host->mmc), intmask,
 			       host->data->error, ktime_to_ms(ktime_sub(
 			       ktime_get(), host->data_start_time)));
@@ -2901,6 +3005,8 @@ out:
 
 	if (unexpected) {
 		pr_err("%s: Unexpected interrupt 0x%08x.\n",
+			   mmc_hostname(host->mmc), unexpected);
+		pr_err("BBox;%s: Unexpected interrupt 0x%08x.\n",
 			   mmc_hostname(host->mmc), unexpected);
 		sdhci_dumpregs(host);
 	}

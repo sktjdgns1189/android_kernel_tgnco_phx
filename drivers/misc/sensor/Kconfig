@@ -1,0 +1,9 @@
+
+menu "Sensors"
+
+config HALL_SENSOR
+        tristate "Hall sensor"
+        help
+          If you say yes here, you will enable hall sensor.
+
+endmenu

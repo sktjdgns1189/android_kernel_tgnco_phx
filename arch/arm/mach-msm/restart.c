@@ -74,7 +74,7 @@ static void *emergency_dload_mode_addr;
 
 /* Download mode master kill-switch */
 static int dload_set(const char *val, struct kernel_param *kp);
-static int download_mode = 1;
+static int download_mode = 0;  /* FIH: default disable ramdump */
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
 static int panic_prep_restart(struct notifier_block *this,
@@ -140,6 +140,7 @@ static int dload_set(const char *val, struct kernel_param *kp)
 	}
 
 	set_dload_mode(download_mode);
+	pr_info("%s: download_mode = %d\n", __func__, download_mode);
 
 	return 0;
 }
@@ -276,6 +277,7 @@ static void msm_restart_prepare(const char *cmd)
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 
 	if (cmd != NULL) {
+		pr_info("%s: cmd = (%s)\n", __func__, cmd);
 		if (!strncmp(cmd, "bootloader", 10)) {
 			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
@@ -292,6 +294,36 @@ static void msm_restart_prepare(const char *cmd)
 			__raw_writel(0x77665501, restart_reason);
 		}
 	}
+
+	/* FIH, to support fih command { */
+	if (cmd != NULL) {
+		if (!strncmp(cmd, "poff_chg_alarm", 14)) {
+			__raw_writel(0x77665507, restart_reason);
+		} else if (strstr(cmd, "exception in system process") ||
+			strstr(cmd, "Watchdog reboot system") ||
+			strstr(cmd, "system crash")) {
+			__raw_writel(0x77665503, restart_reason);
+		} else if (strstr(cmd, "modem crashed")) {
+			__raw_writel(0x77665506, restart_reason);
+			set_dload_mode(download_mode);
+		} else if (strstr(cmd, "skt_restart")) {
+			__raw_writel(0x21534b54, restart_reason);
+		}
+	} else {
+		pr_info("%s: cmd is NULL\n", __func__);
+		__raw_writel(0x00000000, restart_reason);
+	}
+
+	if (in_panic) {
+		pr_info("%s: in_panic = %d\n", __func__, in_panic);
+		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+		__raw_writel(0x46544443, restart_reason);
+		set_dload_mode(download_mode);
+	}
+
+	pr_info("%s: rere = 0x%08x\n", __func__, readl(restart_reason));
+	pr_info("%s: dload = (%s)\n", __func__, (get_dload_mode()? "true":"false"));
+	/* FIH, to support fih command } */
 
 	flush_cache_all();
 	outer_flush_all();

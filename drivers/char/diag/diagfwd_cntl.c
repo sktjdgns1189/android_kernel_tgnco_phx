@@ -146,8 +146,10 @@ int diag_process_smd_cntl_read_data(struct diag_smd_info *smd_info, void *buf,
 		data_len = *(uint32_t *)(buf + 4);
 		if (type < DIAG_CTRL_MSG_REG ||
 				 type > DIAG_CTRL_MSG_LAST) {
+			/* VNA-10795
 			pr_alert("diag: In %s, Invalid Msg type %d proc %d",
 				 __func__, type, smd_info->peripheral);
+			*/
 			break;
 		}
 		if (data_len < 0 || data_len > total_recd) {

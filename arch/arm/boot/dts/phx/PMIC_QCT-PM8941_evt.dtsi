@@ -1,0 +1,221 @@
+/* Regulator */
+&pm8941_l3 {
+	regulator-min-microvolt = <1050000>;
+	regulator-max-microvolt = <1050000>;
+	qcom,init-voltage = <1050000>;
+	status = "okay";
+};
+
+&pm8941_l4 {
+	regulator-min-microvolt = <1300000>;
+	regulator-max-microvolt = <1300000>;
+	qcom,init-voltage = <1300000>;
+	status = "okay";
+};
+
+&pm8941_l14 {
+        regulator-min-microvolt = <1800000>;
+        regulator-max-microvolt = <1800000>;
+        qcom,init-voltage = <1800000>;
+        status = "okay";
+        regulator-always-on;
+};
+
+&pm8941_l16 {
+	regulator-min-microvolt = <3000000>;
+	regulator-max-microvolt = <3000000>;
+	qcom,init-voltage = <3000000>;
+	status = "okay";
+};
+
+&pm8941_l17 {
+	regulator-min-microvolt = <2800000>;
+	regulator-max-microvolt = <2800000>;
+	qcom,init-voltage = <2800000>;
+	status = "okay";
+};
+
+&pm8941_l18 {
+        regulator-min-microvolt = <2850000>;
+        regulator-max-microvolt = <2850000>;
+        qcom,init-voltage = <2850000>;
+        regulator-always-on;
+        status = "okay";
+};
+
+&pm8941_l19 {
+	qcom,init-voltage = <3300000>;
+	status = "okay";
+};
+
+/* This should be 2.8V in HW Schematic but VNA need 3.3V for Panel. */
+/* ChunJeng Modify for Camera*/
+&pm8941_l22 {
+	regulator-min-microvolt = <2800000>;
+	regulator-max-microvolt = <2800000>;
+	qcom,init-voltage = <2800000>;
+	status = "okay";
+};
+
+&pm8941_l23 {
+	regulator-min-microvolt = <2800000>;
+	regulator-max-microvolt = <2800000>;
+	qcom,init-voltage = <2800000>;
+	status = "okay";
+};
+
+&pm8941_lvs1 {
+	regulator-always-on;
+};
+
+&pm8941_mvs1 {
+	status = "okay";
+};
+
+/* Others */
+&bif_ctrl {
+	status = "disabled";
+};
+
+/ {
+	atl_batterydata: qcom,battery-data {
+		qcom,rpull-up-kohm = <100>;
+		qcom,vref-batt-therm = <1800000>;
+
+		/include/ "batterydata-atl-4v35-2950mah.dtsi"
+	};
+};
+
+&pm8941_bms {
+	status = "okay";
+	qcom,enable-fcc-learning;
+	qcom,min-fcc-learning-soc = <20>;
+	qcom,min-fcc-ocv-pc = <30>;
+	qcom,min-fcc-learning-samples = <5>;
+	qcom,fcc-resolution = <12>;
+	qcom,max-voltage-uv = <4350000>;
+	qcom,use-external-rsense;
+	qcom,battery-data = <&atl_batterydata>;
+};
+
+&pm8941_iadc {
+	qcom,rsense = <10000000>;
+
+	chan@1 {
+		label = "external_rsense";
+		reg = <1>;
+		qcom,decimation = <0>;
+		qcom,fast-avg-setup = <0>;
+	};
+};
+
+&pm8941_chg {
+	status = "okay";
+	qcom,vddmax-mv = <4350>;
+	qcom,vddsafe-mv = <4380>;
+	qcom,ibatmax-ma = <2000>;
+	qcom,ibatterm-ma = <100>;
+	qcom,ibatsafe-ma = <2000>;
+	qcom,maxinput-usb-ma = <1000>;
+	qcom,thermal-mitigation = <2000 700 600 325>;
+	qcom,tchg-mins = <512>;
+	qcom,btc-disabled;
+	/delete-property/ qcom,warm-bat-decidegc;
+	/delete-property/ qcom,cool-bat-decidegc;
+	qcom,prj-ver = <0>;
+	qcom,use-batt-id;
+	qcom,battery-data = <&atl_batterydata>;
+};
+
+&pm8941_chg_batif {
+	status = "okay";
+};
+
+&pm8941_lsid0 {
+	qcom,pm8941_rtc {
+		status = "okay";
+		qcom,qpnp-rtc-write = <0>;
+		qcom,qpnp-rtc-alarm-pwrup = <1>;
+	};
+
+	qcom,power-on@800 {
+		qcom,pon_2 {
+			linux,code = <0>;
+		};
+	};
+};
+
+&pm8941_lsid1 {
+	qcom,leds@d000 {
+		qcom,rgb_0 {
+			linux,name = "red";
+			qcom,start-idx = <1>;
+			qcom,idx-len = <32>;
+			qcom,duty-pcts = [00 00 00 00 00 00 00 00 00
+					00 00 00 00 00 00 00 00 00
+					00 00 00 00 00 00 00 00 00
+					00 00 00 00 00];
+			linux,default-trigger = "battery-low-disabled";
+			qcom,pwm-us = <1000>;
+			qcom,lut-flags = <3>;
+			qcom,pause-lo = <0>;
+			qcom,pause-hi = <0>;
+			qcom,ramp-step-ms = <180>;
+			qcom,turn-off-delay-ms = <5>;
+			qcom,use-blink;
+		};
+
+		qcom,rgb_1 {
+			linux,name = "green";
+			qcom,start-idx = <1>;
+			qcom,idx-len = <32>;
+			qcom,duty-pcts = [00 00 00 00 00 00 00 00 00
+					00 00 00 00 00 00 00 00 00
+					00 00 00 00 00 00 00 00 00
+					00 00 00 00 00];
+			linux,default-trigger = "battery-full-disabled";
+			qcom,pwm-us = <1000>;
+			qcom,lut-flags = <3>;
+			qcom,pause-lo = <0>;
+			qcom,pause-hi = <0>;
+			qcom,ramp-step-ms = <180>;
+			qcom,turn-off-delay-ms = <5>;
+			qcom,use-blink;
+		};
+
+		qcom,rgb_2 {
+			linux,name = "blue";
+			qcom,start-idx = <1>;
+			qcom,idx-len = <32>;
+			qcom,duty-pcts = [00 00 00 00 00 00 00 00 00
+					00 00 00 00 00 00 00 00 00
+					00 00 00 00 00 00 00 00 00
+					00 00 00 00 00];
+			linux,default-trigger = "battery-medium";
+			qcom,default-state = "off";
+			qcom,pwm-us = <1000>;
+			qcom,lut-flags = <3>;
+			qcom,pause-lo = <0>;
+			qcom,pause-hi = <0>;
+			qcom,ramp-step-ms = <180>;
+			qcom,turn-off-delay-ms = <5>;
+			status = "ok";
+			qcom,use-blink;
+		};
+	};
+
+	qcom,leds@d300 {
+		label = "flash";
+		status = "disabled";
+	};
+
+	qcom,leds@d800 {
+		label = "wled";
+		status = "disabled";
+	};
+
+	qcom,leds@e200 {
+		label = "kpdbl";
+		status = "disabled";
+	};
+};

@@ -314,6 +314,15 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata)
 		return 0;
 	}
 
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	if (!pdata->cabc_token)
+		while (!pdata->cabc_token) {
+			pr_err("%s: wait for cabc complete\n", __func__);
+			msleep(10);
+		}
+	else
+		pdata->cabc_token = 0;
+#endif
 	pdata->panel_info.panel_power_on = 0;
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
@@ -701,6 +710,9 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	}
 	pdata->panel_info.panel_power_on = 1;
 
+#ifdef CONFIG_FB_MSM_MDSS_CABC_CONTROL
+	pdata->cabc_token = 1;
+#endif
 	mdss_dsi_phy_sw_reset((ctrl_pdata->ctrl_base));
 	mdss_dsi_phy_init(pdata);
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_BUS_CLKS, 0);
