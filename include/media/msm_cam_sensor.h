@@ -12,6 +12,8 @@
 #define I2C_SEQ_REG_DATA_MAX      20
 #define MAX_CID                   16
 
+#define I2C_USER_REG_DATA_MAX 1024
+
 #define MSM_SENSOR_MCLK_8HZ   8000000
 #define MSM_SENSOR_MCLK_12HZ  12000000 //SW4-Rocky-Camera-PortingCamera_00+_20130913
 #define MSM_SENSOR_MCLK_16HZ  16000000

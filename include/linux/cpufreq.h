@@ -20,6 +20,7 @@
 #include <linux/workqueue.h>
 #include <linux/cpumask.h>
 #include <asm/div64.h>
+#include <asm/cputime.h>
 
 #define CPUFREQ_NAME_LEN 16
 
@@ -423,5 +424,11 @@ struct _cpufreq_subsys_opt {
 };
 void register_cpufreq_subsys_opt(struct _cpufreq_subsys_opt *opt);
 //20141223 VNAL-537 IsonYHHung end
+
+/*********************************************************************
+ *                         CPUFREQ STATS                             *
+ *********************************************************************/
+
+void acct_update_power(struct task_struct *p, cputime_t cputime);
 
 #endif /* _LINUX_CPUFREQ_H */
