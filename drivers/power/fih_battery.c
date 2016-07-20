@@ -443,8 +443,6 @@ int fih_battery_status(int status)
 
 	if (chip->otp_status) {
 		return POWER_SUPPLY_STATUS_NOT_CHARGING;
-	} else if (p->bat_cap >= 100) {
-		return POWER_SUPPLY_STATUS_FULL;
 	}
 
 	return status;
