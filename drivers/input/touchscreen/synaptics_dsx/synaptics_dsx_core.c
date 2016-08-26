@@ -132,6 +132,18 @@ static void synaptics_rmi4_early_suspend(struct early_suspend *h);
 static void synaptics_rmi4_late_resume(struct early_suspend *h);
 #endif
 
+#ifdef CONFIG_POWERSUSPEND
+static ssize_t synaptics_rmi4_full_pm_cycle_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
+
+static ssize_t synaptics_rmi4_full_pm_cycle_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
+
+static void synaptics_rmi4_early_suspend(struct power_suspend *h);
+
+static void synaptics_rmi4_late_resume(struct power_suspend *h);
+#endif
+
 static int synaptics_rmi4_suspend(struct device *dev);
 
 static int synaptics_rmi4_resume(struct device *dev);
@@ -380,7 +392,7 @@ struct synaptics_rmi4_exp_fn_data {
 static struct synaptics_rmi4_exp_fn_data exp_data;
 
 static struct device_attribute attrs[] = {
-#ifdef CONFIG_HAS_EARLYSUSPEND
+#if defined(CONFIG_HAS_EARLYSUSPEND) || (CONFIG_POWERSUSPEND)
 	__ATTR(full_pm_cycle, (S_IRUGO | S_IWUSR),
 			synaptics_rmi4_full_pm_cycle_show,
 			synaptics_rmi4_full_pm_cycle_store),
@@ -451,7 +463,7 @@ static void led_smartcover_function(struct synaptics_rmi4_data *rmi4_data)
 	}
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
+#if defined(CONFIG_HAS_EARLYSUSPEND) || (CONFIG_POWERSUSPEND)
 static ssize_t synaptics_rmi4_full_pm_cycle_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -3063,6 +3075,12 @@ static int __devinit synaptics_rmi4_probe(struct platform_device *pdev)
 	register_early_suspend(&rmi4_data->early_suspend);
 #endif
 
+#ifdef CONFIG_POWERSUSPEND
+	rmi4_data->power_suspend.suspend = synaptics_rmi4_early_suspend;
+	rmi4_data->power_suspend.resume = synaptics_rmi4_late_resume;
+	register_power_suspend(&rmi4_data->power_suspend);
+#endif
+
 	rmi4_data->irq = gpio_to_irq(bdata->irq_gpio);
 
 	retval = synaptics_rmi4_irq_enable(rmi4_data, true);
@@ -3152,6 +3170,9 @@ err_enable_irq:
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi4_data->early_suspend);
 #endif
+#ifdef CONFIG_POWERSUSPEND
+	unregister_power_suspend(&rmi4_data->power_suspend);
+#endif
 
 	synaptics_rmi4_empty_fn_list(rmi4_data);
 	input_unregister_device(rmi4_data->input_dev);
@@ -3237,6 +3258,10 @@ static int __devexit synaptics_rmi4_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi4_data->early_suspend);
+#endif
+
+#ifdef CONFIG_POWERSUSPEND
+	unregister_power_suspend(&rmi4_data->power_suspend);
 #endif
 
 	synaptics_rmi4_empty_fn_list(rmi4_data);
@@ -3440,6 +3465,97 @@ static void synaptics_rmi4_late_resume(struct early_suspend *h)
 	struct synaptics_rmi4_data *rmi4_data =
 			container_of(h, struct synaptics_rmi4_data,
 			early_suspend);
+
+	if (rmi4_data->staying_awake)
+		return;
+
+	if (rmi4_data->full_pm_cycle)
+		synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
+
+	if (rmi4_data->sensor_sleep == true) {
+		synaptics_rmi4_sensor_wake(rmi4_data);
+		synaptics_rmi4_irq_enable(rmi4_data, true);
+		retval = synaptics_rmi4_reinit_device(rmi4_data);
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to reinit device\n",
+					__func__);
+		}
+	}
+
+	mutex_lock(&exp_data.mutex);
+	if (!list_empty(&exp_data.list)) {
+		list_for_each_entry(exp_fhandler, &exp_data.list, link)
+			if (exp_fhandler->exp_fn->late_resume != NULL)
+				exp_fhandler->exp_fn->late_resume(rmi4_data);
+	}
+	mutex_unlock(&exp_data.mutex);
+
+	rmi4_data->touch_stopped = false;
+
+	return;
+}
+#endif
+
+#ifdef CONFIG_POWERSUSPEND
+ /**
+ * synaptics_rmi4_early_suspend()
+ *
+ * Called by the kernel during the early suspend phase when the system
+ * enters suspend.
+ *
+ * This function calls synaptics_rmi4_sensor_sleep() to stop finger
+ * data acquisition and put the sensor to sleep.
+ */
+static void synaptics_rmi4_early_suspend(struct power_suspend *h)
+{
+	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
+	struct synaptics_rmi4_data *rmi4_data =
+			container_of(h, struct synaptics_rmi4_data,
+			power_suspend);
+
+	if (rmi4_data->stay_awake) {
+		rmi4_data->staying_awake = true;
+		return;
+	} else {
+		rmi4_data->staying_awake = false;
+	}
+
+	rmi4_data->touch_stopped = true;
+	synaptics_rmi4_irq_enable(rmi4_data, false);
+	synaptics_rmi4_sensor_sleep(rmi4_data);
+	synaptics_rmi4_free_fingers(rmi4_data);
+
+	mutex_lock(&exp_data.mutex);
+	if (!list_empty(&exp_data.list)) {
+		list_for_each_entry(exp_fhandler, &exp_data.list, link)
+			if (exp_fhandler->exp_fn->early_suspend != NULL)
+				exp_fhandler->exp_fn->early_suspend(rmi4_data);
+	}
+	mutex_unlock(&exp_data.mutex);
+
+	if (rmi4_data->full_pm_cycle)
+		synaptics_rmi4_suspend(&(rmi4_data->input_dev->dev));
+
+	return;
+}
+
+ /**
+ * synaptics_rmi4_late_resume()
+ *
+ * Called by the kernel during the late resume phase when the system
+ * wakes up from suspend.
+ *
+ * This function goes through the sensor wake process if the system wakes
+ * up from early suspend (without going into suspend).
+ */
+static void synaptics_rmi4_late_resume(struct power_suspend *h)
+{
+	int retval;
+	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
+	struct synaptics_rmi4_data *rmi4_data =
+			container_of(h, struct synaptics_rmi4_data,
+			power_suspend);
 
 	if (rmi4_data->staying_awake)
 		return;
